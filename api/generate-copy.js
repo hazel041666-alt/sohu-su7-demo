@@ -1,6 +1,6 @@
 const API_URL = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'
 
-module.exports = async function handler(req, res) {
+export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method Not Allowed' })
     return
@@ -14,8 +14,8 @@ module.exports = async function handler(req, res) {
     return
   }
 
-  const colorLabel = (req.body && req.body.colorLabel ? String(req.body.colorLabel) : '海湾蓝').trim()
-  const wheelLabel = (req.body && req.body.wheelLabel ? String(req.body.wheelLabel) : '19寸梅花轮毂').trim()
+  const colorLabel = (req.body?.colorLabel ? String(req.body.colorLabel) : '海湾蓝').trim()
+  const wheelLabel = (req.body?.wheelLabel ? String(req.body.wheelLabel) : '19寸梅花轮毂').trim()
 
   const prompt = [
     '你是搜狐汽车互动广告文案助手。',
@@ -47,12 +47,7 @@ module.exports = async function handler(req, res) {
     }
 
     const data = await response.json()
-    const text =
-      data &&
-      data.choices &&
-      data.choices[0] &&
-      data.choices[0].message &&
-      String(data.choices[0].message.content || '').trim()
+    const text = data?.choices?.[0]?.message?.content?.trim()
 
     if (!text) {
       res.status(502).json({ error: 'No text from model' })

@@ -1,7 +1,0 @@
-{
-  "functions": {
-    "api/**/*.cjs": {
-      "maxDuration": 10
-    }
-  }
-}
