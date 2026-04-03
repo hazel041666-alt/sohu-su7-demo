@@ -1,34 +1,21 @@
-type Req = {
-  method?: string
-  body?: {
-    colorLabel?: string
-    wheelLabel?: string
-  }
-}
-
-type Res = {
-  status: (code: number) => Res
-  json: (payload: unknown) => void
-}
-
 const API_URL = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'
 
-export default async function handler(req: Req, res: Res) {
+module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     res.status(405).json({ error: 'Method Not Allowed' })
     return
   }
 
   const apiKey = process.env.DOUBAO_API_KEY
-  const model = process.env.DOUBAO_MODEL ?? 'doubao-seed-1-6-250615'
+  const model = process.env.DOUBAO_MODEL || 'doubao-seed-1-6-250615'
 
   if (!apiKey) {
     res.status(500).json({ error: 'Missing DOUBAO_API_KEY' })
     return
   }
 
-  const colorLabel = req.body?.colorLabel?.trim() ?? '海湾蓝'
-  const wheelLabel = req.body?.wheelLabel?.trim() ?? '19寸梅花轮毂'
+  const colorLabel = (req.body && req.body.colorLabel ? String(req.body.colorLabel) : '海湾蓝').trim()
+  const wheelLabel = (req.body && req.body.wheelLabel ? String(req.body.wheelLabel) : '19寸梅花轮毂').trim()
 
   const prompt = [
     '你是搜狐汽车互动广告文案助手。',
@@ -47,12 +34,7 @@ export default async function handler(req: Req, res: Res) {
       },
       body: JSON.stringify({
         model,
-        messages: [
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
+        messages: [{ role: 'user', content: prompt }],
         temperature: 0.8,
         max_tokens: 120,
       }),
@@ -64,11 +46,14 @@ export default async function handler(req: Req, res: Res) {
       return
     }
 
-    const data = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>
-    }
+    const data = await response.json()
+    const text =
+      data &&
+      data.choices &&
+      data.choices[0] &&
+      data.choices[0].message &&
+      String(data.choices[0].message.content || '').trim()
 
-    const text = data.choices?.[0]?.message?.content?.trim()
     if (!text) {
       res.status(502).json({ error: 'No text from model' })
       return
