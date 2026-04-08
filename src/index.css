@@ -1,14 +1,14 @@
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;700;800&display=swap');
 @import 'tailwindcss';
 
 :root {
-  --page-bg: #0a1018;
-  --panel-bg: rgba(13, 26, 39, 0.72);
-  --stroke: rgba(166, 196, 224, 0.24);
-  --text-main: #d7e7f6;
-  --text-subtle: #94aac0;
-  --brand: #1e496a;
-  --brand-bright: #4aa5ec;
+  --page-bg: #f6fbff;
+  --panel-bg: rgba(255, 255, 255, 0.88);
+  --stroke: rgba(70, 124, 177, 0.18);
+  --text-main: #172432;
+  --text-subtle: #4b647d;
+  --brand: #0b64d8;
+  --brand-bright: #3f91ff;
 }
 
 * {
@@ -24,12 +24,12 @@ body,
 }
 
 body {
-  font-family: 'Manrope', sans-serif;
+  font-family: 'Outfit', sans-serif;
   color: var(--text-main);
   background:
-    radial-gradient(circle at 20% 8%, rgba(40, 107, 163, 0.28), transparent 42%),
-    radial-gradient(circle at 86% 22%, rgba(50, 92, 128, 0.22), transparent 48%),
-    linear-gradient(175deg, #05080d 0%, #081019 48%, #061321 100%);
+    radial-gradient(circle at 10% 12%, rgba(121, 187, 255, 0.35), transparent 36%),
+    radial-gradient(circle at 88% 18%, rgba(165, 214, 255, 0.42), transparent 42%),
+    linear-gradient(180deg, #f7fbff 0%, #eef5ff 48%, #f9fcff 100%);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -41,7 +41,8 @@ a {
 .glass-panel {
   background: var(--panel-bg);
   border: 1px solid var(--stroke);
-  backdrop-filter: blur(10px);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 14px 45px rgba(17, 67, 120, 0.08);
 }
 
 .headline {
