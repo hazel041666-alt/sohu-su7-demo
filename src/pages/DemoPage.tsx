@@ -1,346 +1,314 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { Link } from 'react-router-dom'
-import CarShowroomCanvas from '../components/CarShowroomCanvas'
-import { askExperienceGuide } from '../lib/ai'
-import {
-  markBookingClick,
-  markGuideConversation,
-  markInteraction,
-  registerPageVisit,
-} from '../lib/analytics'
-import { paintColors, wheelStyles } from '../lib/catalog'
-import type { ChatMessage, ViewMode } from '../lib/types'
+import { useMemo, useState } from 'react'
+import { fetchAdvisorResult } from '../lib/ai'
+import { markGuideConversation, markInteraction, registerPageVisit } from '../lib/analytics'
+import type { AdvisorResponse, DrivingScene, PowerType, UserDemand } from '../lib/types'
 
-const CTA_URL =
-  '/mock-reservation?utm_source=sohu_ai_demo&utm_medium=guide_cta&utm_campaign=su7_launch'
-
-type Recognition = {
-  lang: string
-  continuous: boolean
-  interimResults: boolean
-  onresult: ((event: any) => void) | null
-  onerror: ((event: any) => void) | null
-  onend: (() => void) | null
-  start: () => void
-  stop: () => void
-}
-
-declare global {
-  interface Window {
-    webkitSpeechRecognition?: new () => Recognition
-    SpeechRecognition?: new () => Recognition
-  }
+const defaultFilters: UserDemand = {
+  budgetMinWan: undefined,
+  budgetMaxWan: undefined,
+  scene: undefined,
+  powerPreference: undefined,
+  brandInclude: undefined,
+  brandExclude: undefined,
+  seats: undefined,
+  smartNeed: '',
 }
 
 export default function DemoPage() {
-  const [selectedColor, setSelectedColor] = useState(paintColors[0])
-  const [selectedWheel, setSelectedWheel] = useState(wheelStyles[0])
-  const [loadingModel, setLoadingModel] = useState(true)
-  const [visitorId, setVisitorId] = useState('')
-  const [viewMode, setViewMode] = useState<ViewMode>('exterior')
+  const [query, setQuery] = useState('')
+  const [filters, setFilters] = useState<UserDemand>(defaultFilters)
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState<AdvisorResponse | null>(null)
+  const visitorId = useMemo(() => registerPageVisit(), [])
 
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      role: 'assistant',
-      source: 'fallback',
-      text: '你好，我是AI产品体验官。你可以问我“看下内饰大屏”或“推荐通勤配置”，我会带你切换视角并给建议。',
-    },
-  ])
-  const [highlights, setHighlights] = useState<string[]>([
-    '可语音提问: 看内饰、看车头、聊续航、聊智驾',
-    '体验官会自动切换展厅视角并讲解亮点',
-    '满意后可直接点击预约线下试驾',
-  ])
-  const [inputText, setInputText] = useState('')
-  const [asking, setAsking] = useState(false)
-  const [listening, setListening] = useState(false)
-  const recognitionRef = useRef<Recognition | null>(null)
-  const interactionFlag = useRef(false)
+  const submit = async () => {
+    if (loading) return
 
-  useEffect(() => {
-    const id = registerPageVisit()
-    setVisitorId(id)
-
-    const timer = window.setTimeout(() => {
-      setLoadingModel(false)
-    }, 1300)
-
-    return () => window.clearTimeout(timer)
-  }, [])
-
-  const editionLabel = useMemo(
-    () => `极速${selectedColor.label} x ${selectedWheel.label}`,
-    [selectedColor.label, selectedWheel.label],
-  )
-
-  const markInteractionOnce = () => {
-    if (!visitorId || interactionFlag.current) return
-    interactionFlag.current = true
+    setLoading(true)
     markInteraction(visitorId)
-  }
-
-  const askGuide = async (rawText: string) => {
-    const text = rawText.trim()
-    if (!text || asking) return
-
-    const baseHistory = messages.slice(-6)
-    const userMessage: ChatMessage = { role: 'user', source: 'fallback', text }
-    setMessages((prev) => [...prev, userMessage])
-    setInputText('')
-    setAsking(true)
-
-    if (visitorId) {
-      markGuideConversation(visitorId)
-    }
 
     try {
-      const answer = await askExperienceGuide({
-        colorLabel: selectedColor.label,
-        wheelLabel: selectedWheel.label,
-        userMessage: text,
-        history: baseHistory,
+      const data = await fetchAdvisorResult({
+        query,
+        filters,
       })
 
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: 'assistant',
-          source: answer.source,
-          text: answer.reply,
-        },
-      ])
-      setHighlights(answer.highlights)
-      setViewMode(answer.viewMode)
-
-      if ('speechSynthesis' in window) {
-        window.speechSynthesis.cancel()
-        const utter = new SpeechSynthesisUtterance(answer.reply)
-        utter.lang = 'zh-CN'
-        utter.rate = 1.02
-        window.speechSynthesis.speak(utter)
-      }
+      setResult(data)
+      markGuideConversation(visitorId)
     } finally {
-      setAsking(false)
+      setLoading(false)
     }
-  }
-
-  const startListening = () => {
-    const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SpeechRecognitionCtor || listening) return
-
-    const recognition = new SpeechRecognitionCtor()
-    recognition.lang = 'zh-CN'
-    recognition.continuous = false
-    recognition.interimResults = false
-
-    recognition.onresult = (event: any) => {
-      const transcript = String(event?.results?.[0]?.[0]?.transcript || '').trim()
-      if (!transcript) return
-      setInputText(transcript)
-      askGuide(transcript)
-    }
-
-    recognition.onerror = () => {
-      setListening(false)
-    }
-
-    recognition.onend = () => {
-      setListening(false)
-    }
-
-    recognitionRef.current = recognition
-    setListening(true)
-    recognition.start()
-  }
-
-  const stopListening = () => {
-    recognitionRef.current?.stop()
-    setListening(false)
   }
 
   return (
-    <main className="relative min-h-screen px-4 pb-16 pt-4 md:px-8">
-      <header className="mx-auto flex w-full max-w-6xl items-center justify-between py-3">
-        <p className="text-xs font-semibold tracking-[0.22em] text-slate-300 md:text-sm">SOHU x XIAOMI EV</p>
-        <Link
-          to={CTA_URL}
-          onClick={() => {
-            if (visitorId) {
-              markBookingClick(visitorId)
-            }
-          }}
-          className="rounded-lg bg-sky-500 px-3 py-1 text-xs font-semibold text-white hover:opacity-90 md:text-sm"
-        >
-          预约线下试驾
-        </Link>
-      </header>
+    <main className="min-h-screen bg-[radial-gradient(circle_at_12%_10%,rgba(174,45,0,.2),transparent_38%),radial-gradient(circle_at_88%_20%,rgba(6,79,133,.22),transparent_42%),linear-gradient(168deg,#071019_0%,#0e1f2d_42%,#11293a_100%)] px-4 pb-14 pt-6 md:px-8">
+      <section className="mx-auto w-full max-w-6xl rounded-3xl border border-sky-100/20 bg-[#0b1926]/90 p-5 shadow-[0_16px_70px_rgba(3,9,14,.45)] md:p-8">
+        <p className="text-xs font-semibold tracking-[0.24em] text-sky-200/80">SOHU AUTO ADVISOR DEMO</p>
+        <h1 className="mt-3 text-3xl font-extrabold leading-tight text-slate-100 md:text-5xl">中国在售车型智能选购助手</h1>
+        <p className="mt-3 max-w-4xl text-sm leading-7 text-slate-300 md:text-base">
+          支持自然语言输入和高级筛选，覆盖轿车、SUV、MPV、跑车、皮卡与轻客/商用车，实时抓取搜狐汽车并结合品牌官网信息进行推荐。
+        </p>
 
-      <section className="mx-auto grid w-full max-w-6xl gap-4 md:grid-cols-[1.3fr_0.9fr]">
-        <article className="glass-panel relative min-h-[420px] overflow-hidden rounded-2xl md:min-h-[620px]">
-          {loadingModel ? (
-            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-[#060b11]">
-              <p className="headline text-lg font-bold text-slate-200">定义你的超感时刻</p>
-              <p className="mt-2 text-sm text-slate-400">正在加载沉浸式展厅...</p>
-              <div className="mt-4 h-1.5 w-52 overflow-hidden rounded-full bg-slate-700/50">
-                <div className="h-full w-full origin-left animate-pulse bg-sky-400" />
-              </div>
-            </div>
-          ) : null}
-
-          <CarShowroomCanvas
-            selectedColor={selectedColor}
-            selectedWheel={selectedWheel}
-            viewMode={viewMode}
-            onDragStart={markInteractionOnce}
-          />
-
-          <div className="pointer-events-none absolute left-4 top-4 rounded-lg bg-black/35 px-3 py-2 text-xs text-slate-300">
-            语音提问可自动切换视角
+        <div className="mt-6 grid gap-4 rounded-2xl border border-slate-200/15 bg-[#0f2436] p-4 md:grid-cols-[1.15fr_0.85fr] md:p-5">
+          <div>
+            <p className="text-sm font-semibold text-slate-100">自然语言需求</p>
+            <textarea
+              rows={5}
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="例如：预算20-30万，家用为主，希望7座SUV，优先插混，不考虑某些品牌，智驾要高速领航"
+              className="mt-3 w-full rounded-xl border border-slate-300/25 bg-[#08131d] px-3 py-3 text-sm leading-6 text-slate-100 outline-none focus:border-amber-300"
+            />
+            <p className="mt-2 text-xs text-slate-400">AI 解析失败时会自动回退到规则+表单筛选并提示你补充条件。</p>
           </div>
 
-          <div className="pointer-events-none absolute bottom-4 left-4 rounded-lg bg-black/45 px-3 py-2 text-xs text-slate-300">
-            当前视角: {viewMode === 'interior' ? '内饰' : viewMode === 'front' ? '车头' : viewMode === 'rear' ? '车尾' : '外观'}
-          </div>
-        </article>
-
-        <aside className="glass-panel rounded-2xl p-4 md:p-5">
-          <h1 className="headline text-2xl font-extrabold text-slate-100 md:text-4xl">AI 产品体验官</h1>
-          <p className="mt-2 text-sm leading-6 text-slate-300 md:text-base">
-            通过语音或文本提问，AI 会作为沉浸式导游实时讲解配置并切换视角，最终引导你预约线下试驾。
-          </p>
-
-          <div className="mt-4 rounded-lg border border-slate-400/20 bg-slate-900/40 p-3">
-            <p className="text-xs text-slate-400">当前配置</p>
-            <p className="mt-1 text-sm font-semibold text-slate-100">{editionLabel}</p>
-          </div>
-
-          <div className="mt-4">
-            <p className="mb-2 text-xs tracking-wider text-slate-400">车漆颜色</p>
-            <div className="flex gap-2">
-              {paintColors.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setSelectedColor(item)
-                    markInteractionOnce()
-                  }}
-                  className={`h-10 flex-1 rounded-lg border text-xs transition ${
-                    item.id === selectedColor.id
-                      ? 'border-sky-300 bg-slate-900/90 text-slate-100'
-                      : 'border-slate-500/30 bg-slate-900/40 text-slate-300'
-                  }`}
-                >
-                  <span className="mr-1 inline-block h-2.5 w-2.5 rounded-full" style={{ background: item.hex }} />
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-4">
-            <p className="mb-2 text-xs tracking-wider text-slate-400">轮毂样式</p>
-            <div className="grid gap-2">
-              {wheelStyles.map((item) => (
-                <button
-                  key={item.id}
-                  onClick={() => {
-                    setSelectedWheel(item)
-                    markInteractionOnce()
-                  }}
-                  className={`rounded-lg border px-3 py-2 text-left text-sm transition ${
-                    item.id === selectedWheel.id
-                      ? 'border-sky-300 bg-slate-800/90 text-slate-100'
-                      : 'border-slate-500/30 bg-slate-900/40 text-slate-300'
-                  }`}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-4 rounded-lg border border-slate-400/20 bg-[#08131f] p-3">
-            <p className="text-xs text-slate-400">推荐讲解要点</p>
-            <ul className="mt-2 space-y-1 text-sm text-slate-200">
-              {highlights.map((item) => (
-                <li key={item}>- {item}</li>
-              ))}
-            </ul>
-          </div>
-        </aside>
-      </section>
-
-      <section className="glass-panel mx-auto mt-5 w-full max-w-6xl rounded-2xl p-4 md:p-6">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-lg font-bold text-slate-100">与 AI 产品体验官对话</h2>
-          <div className="flex gap-2">
-            <button
-              onClick={listening ? stopListening : startListening}
-              className={`rounded-lg border px-3 py-2 text-xs font-semibold md:text-sm ${
-                listening
-                  ? 'border-emerald-300/60 bg-emerald-500/20 text-emerald-100'
-                  : 'border-slate-300/30 bg-slate-900/40 text-slate-200'
-              }`}
-            >
-              {listening ? '停止语音' : '语音提问'}
-            </button>
-            <Link
-              to={CTA_URL}
-              onClick={() => {
-                if (visitorId) {
-                  markBookingClick(visitorId)
-                }
-              }}
-              className="rounded-lg bg-sky-500 px-3 py-2 text-xs font-semibold text-white hover:opacity-90 md:text-sm"
-            >
-              预约线下试驾
-            </Link>
+          <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-1">
+            <NumberInput
+              label="预算下限（万）"
+              value={filters.budgetMinWan}
+              onChange={(value) => setFilters((prev) => ({ ...prev, budgetMinWan: value }))}
+            />
+            <NumberInput
+              label="预算上限（万）"
+              value={filters.budgetMaxWan}
+              onChange={(value) => setFilters((prev) => ({ ...prev, budgetMaxWan: value }))}
+            />
+            <SelectInput
+              label="用车场景"
+              value={filters.scene || ''}
+              options={['', '通勤', '家用', '长途']}
+              onChange={(value) =>
+                setFilters((prev) => ({ ...prev, scene: value ? (value as DrivingScene) : undefined }))
+              }
+            />
+            <SelectInput
+              label="动力偏好"
+              value={filters.powerPreference || ''}
+              options={['', '燃油', '纯电', '插混', '增程', '柴油']}
+              onChange={(value) =>
+                setFilters((prev) => ({ ...prev, powerPreference: value ? (value as PowerType) : undefined }))
+              }
+            />
+            <SelectInput
+              label="座位需求"
+              value={String(filters.seats || '')}
+              options={['', '5', '7']}
+              onChange={(value) =>
+                setFilters((prev) => ({ ...prev, seats: value === '7' ? 7 : value === '5' ? 5 : undefined }))
+              }
+            />
+            <TextInput
+              label="品牌偏好（逗号分隔）"
+              value={filters.brandInclude?.join(',') || ''}
+              onChange={(value) =>
+                setFilters((prev) => ({ ...prev, brandInclude: splitBrandInput(value) }))
+              }
+            />
+            <TextInput
+              label="排斥品牌（逗号分隔）"
+              value={filters.brandExclude?.join(',') || ''}
+              onChange={(value) =>
+                setFilters((prev) => ({ ...prev, brandExclude: splitBrandInput(value) }))
+              }
+            />
+            <TextInput
+              label="智驾/车机要求"
+              value={filters.smartNeed || ''}
+              onChange={(value) => setFilters((prev) => ({ ...prev, smartNeed: value }))}
+            />
           </div>
         </div>
 
-        <div className="mt-4 h-[260px] overflow-y-auto rounded-lg border border-slate-400/20 bg-[#06111a] p-3">
-          <div className="space-y-2">
-            {messages.map((msg, idx) => (
-              <div
-                key={`${msg.role}-${idx}`}
-                className={`max-w-[88%] rounded-lg px-3 py-2 text-sm leading-6 ${
-                  msg.role === 'assistant'
-                    ? 'bg-slate-700/40 text-slate-100'
-                    : 'ml-auto bg-sky-500/80 text-white'
-                }`}
-              >
-                {msg.text}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <form
-          className="mt-3 flex flex-col gap-2 md:flex-row"
-          onSubmit={(event) => {
-            event.preventDefault()
-            askGuide(inputText)
-          }}
-        >
-          <input
-            value={inputText}
-            onChange={(event) => setInputText(event.target.value)}
-            placeholder="例如：帮我切到内饰视角，并推荐适合通勤的配置"
-            className="w-full rounded-lg border border-slate-300/25 bg-slate-900/50 px-3 py-2 text-sm text-slate-100 outline-none focus:border-sky-300"
-          />
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <button
-            type="submit"
-            disabled={asking}
-            className="rounded-lg bg-gradient-to-r from-sky-500 to-blue-500 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={submit}
+            disabled={loading}
+            className="rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {asking ? '思考中...' : '发送'}
+            {loading ? '正在抓取并推荐...' : '生成 3 条推荐 + 对比表'}
           </button>
-        </form>
+          {result ? (
+            <p className="text-xs text-slate-400">
+              解析模式：{result.parsed.mode === 'ai' ? 'AI自然语言解析' : '表单/规则回退'} ｜ 数据条目：{result.sourceStats.totalModels} ｜ 更新时间：
+              {new Date(result.fetchedAt).toLocaleString('zh-CN')}
+            </p>
+          ) : null}
+        </div>
       </section>
 
-      <footer className="mx-auto mt-6 w-full max-w-6xl px-1 text-xs text-slate-500">
-        本页面为搜狐汽车创新广告 Demo 测试，车辆参数与外观请以官方实际发布为准。
+      {result ? (
+        <section className="mx-auto mt-5 grid w-full max-w-6xl gap-4 md:grid-cols-[1.1fr_0.9fr]">
+          <article className="rounded-2xl border border-slate-200/15 bg-[#0b1d2c]/90 p-5">
+            <h2 className="text-xl font-bold text-slate-100">推荐结果（默认 Top 3）</h2>
+            <p className="mt-1 text-xs text-slate-400">{result.parsed.message}</p>
+
+            <div className="mt-4 space-y-3">
+              {result.recommendations.length ? (
+                result.recommendations.map((item) => (
+                  <div key={item.car.id} className="rounded-xl border border-slate-200/10 bg-[#0e2538] p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <h3 className="text-lg font-bold text-amber-200">{item.car.brand} {item.car.model}</h3>
+                        <p className="mt-1 text-xs text-slate-300">{item.car.category} ｜ {item.car.level} ｜ 推荐分 {item.score}</p>
+                      </div>
+                      <a
+                        href={item.car.sourceUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-lg border border-sky-300/40 px-3 py-1 text-xs text-sky-200 hover:bg-sky-500/10"
+                      >
+                        打开搜狐来源
+                      </a>
+                    </div>
+                    <p className="mt-2 text-sm text-slate-200">推荐理由：{item.reason}</p>
+                    <p className="mt-2 text-xs text-slate-300">
+                      关键参数：{item.car.priceMinWan}-{item.car.priceMaxWan}万 ｜ {item.car.powerType} ｜ {item.car.seats}座 ｜ {item.car.rangeOrFuel}
+                    </p>
+                    {item.car.officialUrl ? (
+                      <a
+                        href={item.car.officialUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="mt-2 inline-block text-xs text-emerald-200 underline-offset-2 hover:underline"
+                      >
+                        查看品牌官网参数（冲突时已优先官网）
+                      </a>
+                    ) : null}
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-xl border border-amber-300/20 bg-amber-500/5 p-3 text-sm text-amber-100">
+                  当前筛选条件下暂无匹配车型，请放宽预算或品牌限制后重试。
+                </div>
+              )}
+            </div>
+          </article>
+
+          <article className="rounded-2xl border border-slate-200/15 bg-[#0b1d2c]/90 p-5">
+            <h2 className="text-xl font-bold text-slate-100">关键参数对比</h2>
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full min-w-[720px] border-collapse text-left text-xs text-slate-200">
+                <thead>
+                  <tr className="border-b border-slate-400/30 text-slate-300">
+                    <th className="px-2 py-2">车型</th>
+                    <th className="px-2 py-2">指导价</th>
+                    <th className="px-2 py-2">级别</th>
+                    <th className="px-2 py-2">车身尺寸/轴距</th>
+                    <th className="px-2 py-2">座位数</th>
+                    <th className="px-2 py-2">动力类型</th>
+                    <th className="px-2 py-2">续航或油耗</th>
+                    <th className="px-2 py-2">智驾</th>
+                    <th className="px-2 py-2">车机</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.comparison.map((car) => (
+                    <tr key={`cmp-${car.id}`} className="border-b border-slate-500/20 align-top">
+                      <td className="px-2 py-2 font-semibold text-slate-100">{car.brand} {car.model}</td>
+                      <td className="px-2 py-2">{car.priceMinWan}-{car.priceMaxWan}万</td>
+                      <td className="px-2 py-2">{car.level}</td>
+                      <td className="px-2 py-2">{car.sizeMm} / {car.wheelbaseMm || '待补充'}mm</td>
+                      <td className="px-2 py-2">{car.seats}</td>
+                      <td className="px-2 py-2">{car.powerType}</td>
+                      <td className="px-2 py-2">{car.rangeOrFuel}</td>
+                      <td className="px-2 py-2">{car.adas}</td>
+                      <td className="px-2 py-2">{car.cockpit}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </article>
+        </section>
+      ) : null}
+
+      <footer className="mx-auto mt-6 w-full max-w-6xl rounded-xl border border-slate-300/15 bg-[#091622] px-4 py-3 text-xs leading-6 text-slate-400">
+        数据来源于搜狐汽车，价格与配置以官方最新信息为准。若搜狐与品牌官网参数冲突，系统优先展示官网信息。
       </footer>
     </main>
+  )
+}
+
+function splitBrandInput(value: string) {
+  const list = value
+    .split(/[，,\s]+/)
+    .map((x) => x.trim())
+    .filter(Boolean)
+  return list.length ? list : undefined
+}
+
+type NumberInputProps = {
+  label: string
+  value?: number
+  onChange: (value: number | undefined) => void
+}
+
+function NumberInput(props: NumberInputProps) {
+  return (
+    <label className="block">
+      <span className="text-xs text-slate-300">{props.label}</span>
+      <input
+        type="number"
+        value={typeof props.value === 'number' ? props.value : ''}
+        onChange={(event) => {
+          const next = event.target.value
+          if (!next.trim()) {
+            props.onChange(undefined)
+            return
+          }
+          const n = Number(next)
+          props.onChange(Number.isFinite(n) ? n : undefined)
+        }}
+        className="mt-1 w-full rounded-lg border border-slate-300/25 bg-[#08131d] px-3 py-2 text-sm text-slate-100 outline-none focus:border-amber-300"
+      />
+    </label>
+  )
+}
+
+type SelectInputProps = {
+  label: string
+  value: string
+  options: string[]
+  onChange: (value: string) => void
+}
+
+function SelectInput(props: SelectInputProps) {
+  return (
+    <label className="block">
+      <span className="text-xs text-slate-300">{props.label}</span>
+      <select
+        value={props.value}
+        onChange={(event) => props.onChange(event.target.value)}
+        className="mt-1 w-full rounded-lg border border-slate-300/25 bg-[#08131d] px-3 py-2 text-sm text-slate-100 outline-none focus:border-amber-300"
+      >
+        <option value="">不限</option>
+        {props.options
+          .filter((item) => item)
+          .map((item) => (
+            <option key={item} value={item}>
+              {item}
+            </option>
+          ))}
+      </select>
+    </label>
+  )
+}
+
+type TextInputProps = {
+  label: string
+  value: string
+  onChange: (value: string) => void
+}
+
+function TextInput(props: TextInputProps) {
+  return (
+    <label className="block sm:col-span-2 md:col-span-1">
+      <span className="text-xs text-slate-300">{props.label}</span>
+      <input
+        value={props.value}
+        onChange={(event) => props.onChange(event.target.value)}
+        className="mt-1 w-full rounded-lg border border-slate-300/25 bg-[#08131d] px-3 py-2 text-sm text-slate-100 outline-none focus:border-amber-300"
+      />
+    </label>
   )
 }

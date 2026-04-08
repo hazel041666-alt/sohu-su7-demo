@@ -1,73 +1,96 @@
-# React + TypeScript + Vite
+# Sohu Auto Advisor Demo
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+一个面向中文用户的车型选购助手 Demo。
 
-Currently, two official plugins are available:
+## 核心能力
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- 覆盖多品牌多车型推荐，不再限定单一品牌叙事。
+- 首页合并自然语言输入与高级筛选器。
+- 后端代理抓取搜狐汽车页面，前端不直连搜狐。
+- 支持 10-30 分钟级缓存（当前默认 15 分钟）。
+- AI 解析自然语言需求失败时自动回退到规则+表单筛选。
+- 默认输出 Top 3 推荐，并展示关键参数对比表。
+- 每条推荐包含推荐理由、参数、价格区间、来源链接。
+- 当搜狐与品牌官网参数冲突时优先官网。
 
-## React Compiler
+## 本地运行
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+1. 安装依赖
 
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+npm install
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+2. 配置环境变量（可选但推荐）
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+复制 `.env.example` 为 `.env.local` 并设置：
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```env
+LLM_API_KEY=your_api_key
+LLM_MODEL=your_model
+LLM_API_URL=https://ark.cn-beijing.volces.com/api/v3/chat/completions
 ```
+
+说明：
+
+- 未配置 LLM 时，系统会自动使用规则解析用户自然语言。
+- 仅影响自然语言需求抽取，不影响基础筛选推荐流程。
+
+3. 启动开发服务
+
+```bash
+npm run dev
+```
+
+## API 说明
+
+- 入口：`api/experience-guide.js`
+- 方法：`POST`
+- 请求体：
+
+```json
+{
+  "query": "预算20-30万，家用7座，优先插混",
+  "filters": {
+    "budgetMinWan": 20,
+    "budgetMaxWan": 30,
+    "scene": "家用",
+    "powerPreference": "插混",
+    "brandInclude": ["比亚迪"],
+    "brandExclude": ["某品牌"],
+    "seats": 7,
+    "smartNeed": "高速领航"
+  }
+}
+```
+
+- 响应：解析模式、推荐列表、对比表、抓取时间、数据来源说明。
+
+## 抓取与缓存策略
+
+- 后端实时抓取搜狐页面并做结构化抽取。
+- 为保证稳定性，使用内存缓存（默认 15 分钟）。
+- 抓取失败时仍会使用内置种子车型保障最小可用体验。
+
+## 线上部署（Vercel / Node）
+
+### Vercel
+
+1. 导入仓库到 Vercel。
+2. 在项目环境变量中配置 `LLM_API_KEY`、`LLM_MODEL`、可选 `LLM_API_URL`。
+3. 直接部署。
+
+### Node 服务
+
+该项目前端为 Vite。若需 Node 常驻服务，请将 `api/experience-guide.js` 挂载到你的 Node 框架（如 Express/Fastify）并确保：
+
+- Node 版本 >= 20
+- 可访问外网（用于抓取搜狐与调用 LLM）
+- 生产环境使用 Redis 或外部缓存替换内存缓存
+
+## 合规提示
+
+页面应明确展示：
+
+- 数据来源于搜狐汽车，价格与配置以官方最新信息为准。
+- 如搜狐与官网冲突，优先展示官网信息。

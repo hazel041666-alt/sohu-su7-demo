@@ -1,7 +1,7 @@
 import type { AnalyticsState, SessionFlags } from './types'
 
-const STORAGE_KEY = 'su7_demo_metrics'
-const VISITOR_KEY = 'su7_demo_visitor_id'
+const STORAGE_KEY = 'sohu_auto_advisor_metrics'
+const VISITOR_KEY = 'sohu_auto_advisor_visitor_id'
 
 const blankSession: SessionFlags = {
   interacted: false,

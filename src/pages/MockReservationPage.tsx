@@ -21,8 +21,8 @@ export default function MockReservationPage() {
   return (
     <main className="flex min-h-screen items-center justify-center px-4 py-10">
       <section className="glass-panel w-full max-w-lg rounded-2xl p-5 md:p-7">
-        <p className="text-xs tracking-[0.2em] text-slate-400">SOHU x XIAOMI EV</p>
-        <h1 className="mt-2 text-2xl font-bold text-slate-100">预约试驾（Mock 页面）</h1>
+        <p className="text-xs tracking-[0.2em] text-slate-400">SOHU AUTO ADVISOR</p>
+        <h1 className="mt-2 text-2xl font-bold text-slate-100">预约咨询（Mock 页面）</h1>
         <p className="mt-2 text-sm text-slate-300">该页面用于演示广告转化链路，不会收集真实商业数据。</p>
 
         {done ? (
