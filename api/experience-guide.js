@@ -27,7 +27,7 @@ const seededModels = [
     rangeOrFuel: 'CLTC 510-610km',
     adas: 'L2级辅助驾驶，AEB/ACC/LKA',
     cockpit: 'DiLink 语音+导航+生态应用',
-    sourceUrl: 'https://db.auto.sohu.com/model_7608/',
+    sourceUrl: buildSohuModelSearchUrl('比亚迪', '秦L EV'),
     officialUrl: 'https://www.byd.com/cn/car/qinl-ev',
   },
   {
@@ -45,7 +45,7 @@ const seededModels = [
     rangeOrFuel: 'CLTC 606-713km',
     adas: '基础辅助驾驶，支持NOA能力扩展',
     cockpit: '15.4英寸中控，语音与多媒体生态',
-    sourceUrl: 'https://db.auto.sohu.com/model_6028/',
+    sourceUrl: buildSohuModelSearchUrl('特斯拉', 'Model 3'),
     officialUrl: 'https://www.tesla.cn/model3',
   },
   {
@@ -63,7 +63,7 @@ const seededModels = [
     rangeOrFuel: 'WLTC 7.5L/100km',
     adas: 'L2级辅助驾驶，360全景',
     cockpit: '多联屏+语音助手+手机互联',
-    sourceUrl: 'https://db.auto.sohu.com/model_6405/',
+    sourceUrl: buildSohuModelSearchUrl('吉利', '星越L'),
     officialUrl: 'https://www.geely.com',
   },
   {
@@ -81,7 +81,7 @@ const seededModels = [
     rangeOrFuel: 'CLTC综合续航1300km+',
     adas: '高速NOA，城区辅助驾驶',
     cockpit: '双联屏+语音大模型+后排娱乐',
-    sourceUrl: 'https://db.auto.sohu.com/model_7582/',
+    sourceUrl: buildSohuModelSearchUrl('理想', 'L6'),
     officialUrl: 'https://www.lixiang.com',
   },
   {
@@ -99,7 +99,7 @@ const seededModels = [
     rangeOrFuel: 'WLTC 5.9-6.6L/100km',
     adas: 'TSS辅助驾驶系统',
     cockpit: '语音交互+多屏互联',
-    sourceUrl: 'https://db.auto.sohu.com/model_6759/',
+    sourceUrl: buildSohuModelSearchUrl('丰田', '赛那'),
     officialUrl: 'https://www.gac-toyota.com.cn',
   },
   {
@@ -117,7 +117,7 @@ const seededModels = [
     rangeOrFuel: '综合油耗约8.4L/100km',
     adas: 'L2辅助驾驶，拖挂辅助',
     cockpit: '大屏导航+语音控制',
-    sourceUrl: 'https://db.auto.sohu.com/model_7491/',
+    sourceUrl: buildSohuModelSearchUrl('福特', 'Ranger'),
     officialUrl: 'https://www.ford.com.cn',
   },
 ]
@@ -360,7 +360,7 @@ function mergeAndPreferOfficial(seed, live) {
   const map = new Map()
 
   for (const item of [...seed, ...live]) {
-    const key = `${item.brand}-${item.model}`
+    const key = modelKey(item.brand, item.model)
     const old = map.get(key)
     if (!old) {
       map.set(key, item)
@@ -371,7 +371,7 @@ function mergeAndPreferOfficial(seed, live) {
       ...old,
       ...item,
       officialUrl: item.officialUrl || old.officialUrl,
-      sourceUrl: item.sourceUrl || old.sourceUrl,
+      sourceUrl: item.sourceUrl || old.sourceUrl || buildSohuModelSearchUrl(item.brand, item.model),
       level: item.level || old.level,
       sizeMm: item.sizeMm || old.sizeMm,
       wheelbaseMm: item.wheelbaseMm || old.wheelbaseMm,
@@ -382,6 +382,18 @@ function mergeAndPreferOfficial(seed, live) {
   }
 
   return [...map.values()]
+}
+
+function modelKey(brand, model) {
+  return `${String(brand)}-${String(model)}`
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[^a-z0-9\u4e00-\u9fa5]/g, '')
+}
+
+function buildSohuModelSearchUrl(brand, model) {
+  const keyword = `${String(brand)} ${String(model)} 参数 报价`
+  return `https://search.sohu.com/search?keyword=${encodeURIComponent(keyword)}`
 }
 
 async function scrapeSohuModels() {
@@ -489,7 +501,7 @@ function normalizeExtracted(rows) {
 
   const uniq = new Map()
   for (const car of models) {
-    const key = `${car.brand}-${car.model}`
+    const key = modelKey(car.brand, car.model)
     if (!uniq.has(key)) uniq.set(key, car)
   }
 
