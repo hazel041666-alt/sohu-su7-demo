@@ -1,7 +1,25 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { fetchAdvisorResult } from '../lib/ai'
 import { markGuideConversation, markInteraction, registerPageVisit } from '../lib/analytics'
 import type { AdvisorResponse, DrivingScene, PowerType, UserDemand } from '../lib/types'
+
+type Recognition = {
+  lang: string
+  continuous: boolean
+  interimResults: boolean
+  onresult: ((event: any) => void) | null
+  onerror: ((event: any) => void) | null
+  onend: (() => void) | null
+  start: () => void
+  stop: () => void
+}
+
+declare global {
+  interface Window {
+    webkitSpeechRecognition?: new () => Recognition
+    SpeechRecognition?: new () => Recognition
+  }
+}
 
 const defaultFilters: UserDemand = {
   budgetMinWan: undefined,
@@ -18,26 +36,94 @@ export default function DemoPage() {
   const [query, setQuery] = useState('')
   const [filters, setFilters] = useState<UserDemand>(defaultFilters)
   const [loading, setLoading] = useState(false)
+  const [listening, setListening] = useState(false)
+  const [voiceStatus, setVoiceStatus] = useState('')
   const [result, setResult] = useState<AdvisorResponse | null>(null)
   const visitorId = useMemo(() => registerPageVisit(), [])
+  const recognitionRef = useRef<Recognition | null>(null)
 
-  const submit = async () => {
+  useEffect(() => {
+    return () => {
+      recognitionRef.current?.stop()
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel()
+      }
+    }
+  }, [])
+
+  const submit = async (nextQuery?: string) => {
     if (loading) return
+    const finalQuery = typeof nextQuery === 'string' ? nextQuery : query
 
     setLoading(true)
     markInteraction(visitorId)
 
     try {
       const data = await fetchAdvisorResult({
-        query,
+        query: finalQuery,
         filters,
       })
 
       setResult(data)
+      setQuery(finalQuery)
       markGuideConversation(visitorId)
+      speakRecommendationSummary(data)
     } finally {
       setLoading(false)
     }
+  }
+
+  const startListening = () => {
+    if (listening || loading) return
+
+    const RecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!RecognitionCtor) {
+      setVoiceStatus('当前浏览器不支持语音输入，请使用 Chrome 或 Edge。')
+      return
+    }
+
+    const recognition = new RecognitionCtor()
+    recognition.lang = 'zh-CN'
+    recognition.continuous = false
+    recognition.interimResults = false
+
+    recognition.onresult = (event: any) => {
+      const transcript = String(event?.results?.[0]?.[0]?.transcript || '').trim()
+      if (!transcript) {
+        setVoiceStatus('未识别到有效语音，请再试一次。')
+        return
+      }
+
+      setVoiceStatus(`已识别：${transcript}`)
+      setQuery(transcript)
+      void submit(transcript)
+    }
+
+    recognition.onerror = () => {
+      setVoiceStatus('语音识别失败，请检查麦克风权限后重试。')
+      setListening(false)
+    }
+
+    recognition.onend = () => {
+      setListening(false)
+    }
+
+    recognitionRef.current = recognition
+    setListening(true)
+    setVoiceStatus('正在聆听，请说出你的选车需求。')
+
+    try {
+      recognition.start()
+    } catch {
+      setListening(false)
+      setVoiceStatus('语音识别启动失败，请刷新后重试。')
+    }
+  }
+
+  const stopListening = () => {
+    recognitionRef.current?.stop()
+    setListening(false)
+    setVoiceStatus('已停止语音输入。')
   }
 
   return (
@@ -120,13 +206,24 @@ export default function DemoPage() {
         </div>
 
         <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <button
-            onClick={submit}
-            disabled={loading}
-            className="rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {loading ? '正在抓取并推荐...' : '生成 3 条推荐 + 对比表'}
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => void submit()}
+              disabled={loading}
+              className="rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {loading ? '正在抓取并推荐...' : '生成 3 条推荐 + 对比表'}
+            </button>
+            <button
+              onClick={listening ? stopListening : startListening}
+              disabled={loading}
+              className={`rounded-xl px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60 ${
+                listening ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-sky-600 hover:bg-sky-500'
+              }`}
+            >
+              {listening ? '停止语音输入' : '语音输入并推荐'}
+            </button>
+          </div>
           {result ? (
             <p className="text-xs text-slate-400">
               解析模式：{result.parsed.mode === 'ai' ? 'AI自然语言解析' : '表单/规则回退'} ｜ 数据条目：{result.sourceStats.totalModels} ｜ 更新时间：
@@ -134,6 +231,7 @@ export default function DemoPage() {
             </p>
           ) : null}
         </div>
+        {voiceStatus ? <p className="mt-2 text-xs text-sky-200">{voiceStatus}</p> : null}
       </section>
 
       {result ? (
@@ -227,6 +325,22 @@ export default function DemoPage() {
       </footer>
     </main>
   )
+}
+
+function speakRecommendationSummary(data: AdvisorResponse) {
+  if (!('speechSynthesis' in window)) return
+
+  window.speechSynthesis.cancel()
+
+  const topCars = data.recommendations.slice(0, 3)
+  const summary = topCars.length
+    ? `为你推荐${topCars.map((item) => `${item.car.brand}${item.car.model}`).join('、')}。你可以打开来源查看详细参数。`
+    : '当前条件下暂无匹配车型，你可以放宽预算或减少品牌限制后再试。'
+
+  const utter = new SpeechSynthesisUtterance(summary)
+  utter.lang = 'zh-CN'
+  utter.rate = 1.02
+  window.speechSynthesis.speak(utter)
 }
 
 function splitBrandInput(value: string) {
