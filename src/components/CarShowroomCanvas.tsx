@@ -1,14 +1,17 @@
 import { Environment, OrbitControls } from '@react-three/drei'
-import { Canvas } from '@react-three/fiber'
-import { Suspense, useMemo, useRef } from 'react'
+import { Canvas, useThree } from '@react-three/fiber'
+import { Suspense, useEffect, useMemo, useRef } from 'react'
 import * as THREE from 'three'
 import type { PaintColor, WheelStyle } from '../lib/types'
 
 type CarShowroomCanvasProps = {
   selectedColor: PaintColor
   selectedWheel: WheelStyle
+  viewMode: 'exterior' | 'front' | 'rear' | 'interior'
   onDragStart: () => void
 }
+
+type ViewMode = CarShowroomCanvasProps['viewMode']
 
 function ConceptCar({ selectedColor, selectedWheel }: Pick<CarShowroomCanvasProps, 'selectedColor' | 'selectedWheel'>) {
   const bodyMaterial = useMemo(
@@ -73,8 +76,37 @@ function Wheel({ position, material }: WheelProps) {
   )
 }
 
-export default function CarShowroomCanvas({ selectedColor, selectedWheel, onDragStart }: CarShowroomCanvasProps) {
+type CameraDirectorProps = {
+  viewMode: ViewMode
+  controlsRef: { current: any }
+}
+
+function CameraDirector({ viewMode, controlsRef }: CameraDirectorProps) {
+  const { camera } = useThree()
+
+  useEffect(() => {
+    const presets: Record<ViewMode, { position: [number, number, number]; target: [number, number, number] }> = {
+      exterior: { position: [4.8, 2.1, 3.8], target: [0, 0.45, 0] },
+      front: { position: [5.6, 1.5, 0], target: [0.8, 0.5, 0] },
+      rear: { position: [-5.3, 1.4, 0], target: [-0.8, 0.45, 0] },
+      interior: { position: [0.25, 1.12, 0], target: [1.2, 0.95, 0] },
+    }
+
+    const next = presets[viewMode]
+    camera.position.set(...next.position)
+    if (controlsRef.current) {
+      controlsRef.current.target.set(...next.target)
+      controlsRef.current.update()
+    }
+  }, [camera, controlsRef, viewMode])
+
+  return null
+}
+
+export default function CarShowroomCanvas({ selectedColor, selectedWheel, viewMode, onDragStart }: CarShowroomCanvasProps) {
   const draggedRef = useRef(false)
+  const controlsRef = useRef<any>(null)
+
   const handleControlStart = () => {
     if (draggedRef.current) return
     draggedRef.current = true
@@ -110,9 +142,11 @@ export default function CarShowroomCanvas({ selectedColor, selectedWheel, onDrag
       <Suspense fallback={null}>
         <ConceptCar selectedColor={selectedColor} selectedWheel={selectedWheel} />
         <Environment preset="night" />
+        <CameraDirector viewMode={viewMode} controlsRef={controlsRef} />
       </Suspense>
 
       <OrbitControls
+        ref={controlsRef}
         autoRotate
         autoRotateSpeed={0.55}
         enablePan={false}

@@ -5,9 +5,8 @@ const VISITOR_KEY = 'su7_demo_visitor_id'
 
 const blankSession: SessionFlags = {
   interacted: false,
-  posterClicked: false,
-  posterGenerated: false,
-  qrScanned: false,
+  guided: false,
+  bookingClicked: false,
   formSubmitted: false,
 }
 
@@ -15,9 +14,8 @@ const initialState: AnalyticsState = {
   uv: 0,
   totalPageViews: 0,
   interactiveUsers: 0,
-  posterClicks: 0,
-  postersGenerated: 0,
-  qrScans: 0,
+  guidedUsers: 0,
+  bookingClicks: 0,
   formSubmits: 0,
   sessions: {},
 }
@@ -78,30 +76,33 @@ export function markInteraction(visitorId: string) {
   writeState(state)
 }
 
-export function markPosterClick(visitorId: string) {
+export function markGuideConversation(visitorId: string) {
   const state = readState()
-  if (!state.sessions[visitorId].posterClicked) {
-    state.sessions[visitorId].posterClicked = true
-    state.posterClicks += 1
+  if (!state.sessions[visitorId]) {
+    state.sessions[visitorId] = { ...blankSession }
+    state.uv += 1
   }
+
+  if (!state.sessions[visitorId].guided) {
+    state.sessions[visitorId].guided = true
+    state.guidedUsers += 1
+  }
+
   writeState(state)
 }
 
-export function markPosterGenerated(visitorId: string) {
+export function markBookingClick(visitorId: string) {
   const state = readState()
-  if (!state.sessions[visitorId].posterGenerated) {
-    state.sessions[visitorId].posterGenerated = true
-    state.postersGenerated += 1
+  if (!state.sessions[visitorId]) {
+    state.sessions[visitorId] = { ...blankSession }
+    state.uv += 1
   }
-  writeState(state)
-}
 
-export function markQrScanned(visitorId: string) {
-  const state = readState()
-  if (!state.sessions[visitorId].qrScanned) {
-    state.sessions[visitorId].qrScanned = true
-    state.qrScans += 1
+  if (!state.sessions[visitorId].bookingClicked) {
+    state.sessions[visitorId].bookingClicked = true
+    state.bookingClicks += 1
   }
+
   writeState(state)
 }
 
@@ -117,14 +118,14 @@ export function markFormSubmitted(visitorId: string) {
 export function getMetrics() {
   const state = readState()
   const uv = Math.max(state.uv, 1)
-  const generated = Math.max(state.postersGenerated, 1)
+  const bookingClicks = Math.max(state.bookingClicks, 1)
 
   return {
     raw: state,
     ratios: {
       interactionRate: Math.round((state.interactiveUsers / uv) * 1000) / 10,
-      posterCtr: Math.round((state.posterClicks / uv) * 1000) / 10,
-      leadConversion: Math.round((state.formSubmits / generated) * 1000) / 10,
+      guidedRate: Math.round((state.guidedUsers / uv) * 1000) / 10,
+      leadConversion: Math.round((state.formSubmits / bookingClicks) * 1000) / 10,
     },
   }
 }

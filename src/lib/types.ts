@@ -11,26 +11,34 @@ export type WheelStyle = {
   metalness: number
 }
 
-export type CopyResult = {
-  text: string
+export type ViewMode = 'exterior' | 'front' | 'rear' | 'interior'
+
+export type GuideResult = {
+  reply: string
+  viewMode: ViewMode
   source: 'doubao' | 'fallback'
+  highlights: string[]
+}
+
+export type ChatMessage = {
+  role: 'user' | 'assistant'
+  source: 'doubao' | 'fallback'
+  text: string
 }
 
 export type AnalyticsState = {
   uv: number
   totalPageViews: number
   interactiveUsers: number
-  posterClicks: number
-  postersGenerated: number
-  qrScans: number
+  guidedUsers: number
+  bookingClicks: number
   formSubmits: number
   sessions: Record<string, SessionFlags>
 }
 
 export type SessionFlags = {
   interacted: boolean
-  posterClicked: boolean
-  posterGenerated: boolean
-  qrScanned: boolean
+  guided: boolean
+  bookingClicked: boolean
   formSubmitted: boolean
 }
