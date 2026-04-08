@@ -509,10 +509,19 @@ function normalizeExtracted(rows) {
 }
 
 function normalizeUrl(url) {
-  if (url.startsWith('http')) return url
-  if (url.startsWith('//')) return `https:${url}`
-  if (url.startsWith('/')) return `https://auto.sohu.com${url}`
-  return `https://auto.sohu.com/${url}`
+  const value = String(url || '').trim()
+  if (!value) return 'https://auto.sohu.com/'
+
+  if (/^https?:\/\//i.test(value)) return value
+  if (value.startsWith('//')) return `https:${value}`
+
+  // Some pages return host-style href values like "db.auto.sohu.com/model_xxx/".
+  if (/^[a-z0-9.-]+\.[a-z]{2,}(?:\/|$)/i.test(value)) {
+    return `https://${value.replace(/^\/+/, '')}`
+  }
+
+  if (value.startsWith('/')) return `https://auto.sohu.com${value}`
+  return `https://auto.sohu.com/${value.replace(/^\.\//, '')}`
 }
 
 function recommendCars(cars, demand) {
