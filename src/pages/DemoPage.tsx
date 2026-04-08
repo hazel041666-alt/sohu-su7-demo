@@ -14,6 +14,11 @@ type Recognition = {
   stop: () => void
 }
 
+type VoiceTurn = {
+  role: 'user' | 'assistant'
+  text: string
+}
+
 declare global {
   interface Window {
     webkitSpeechRecognition?: new () => Recognition
@@ -37,13 +42,18 @@ export default function DemoPage() {
   const [filters, setFilters] = useState<UserDemand>(defaultFilters)
   const [loading, setLoading] = useState(false)
   const [listening, setListening] = useState(false)
+  const [speaking, setSpeaking] = useState(false)
+  const [voiceSessionActive, setVoiceSessionActive] = useState(false)
   const [voiceStatus, setVoiceStatus] = useState('')
+  const [voiceTurns, setVoiceTurns] = useState<VoiceTurn[]>([])
   const [result, setResult] = useState<AdvisorResponse | null>(null)
   const visitorId = useMemo(() => registerPageVisit(), [])
   const recognitionRef = useRef<Recognition | null>(null)
+  const voiceSessionActiveRef = useRef(false)
 
   useEffect(() => {
     return () => {
+      voiceSessionActiveRef.current = false
       recognitionRef.current?.stop()
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel()
@@ -96,7 +106,11 @@ export default function DemoPage() {
 
       setVoiceStatus(`已识别：${transcript}`)
       setQuery(transcript)
-      void submit(transcript)
+      if (voiceSessionActiveRef.current) {
+        void runVoiceGuideTurn(transcript)
+      } else {
+        void submit(transcript)
+      }
     }
 
     recognition.onerror = () => {
@@ -106,6 +120,16 @@ export default function DemoPage() {
 
     recognition.onend = () => {
       setListening(false)
+
+      if (!voiceSessionActiveRef.current || speaking || loading) {
+        return
+      }
+
+      window.setTimeout(() => {
+        if (voiceSessionActiveRef.current && !speaking && !loading) {
+          startListening()
+        }
+      }, 260)
     }
 
     recognitionRef.current = recognition
@@ -124,6 +148,60 @@ export default function DemoPage() {
     recognitionRef.current?.stop()
     setListening(false)
     setVoiceStatus('已停止语音输入。')
+  }
+
+  const startVoiceSession = () => {
+    setVoiceTurns([])
+    setVoiceSessionActive(true)
+    voiceSessionActiveRef.current = true
+    setVoiceStatus('实时语音导购已开启，请直接说出你的需求。')
+    startListening()
+  }
+
+  const stopVoiceSession = () => {
+    setVoiceSessionActive(false)
+    voiceSessionActiveRef.current = false
+    stopListening()
+    if ('speechSynthesis' in window) {
+      window.speechSynthesis.cancel()
+    }
+    setSpeaking(false)
+    setVoiceStatus('实时语音导购已结束。')
+  }
+
+  const runVoiceGuideTurn = async (transcript: string) => {
+    const userText = transcript.trim()
+    if (!userText) return
+
+    setVoiceTurns((prev) => [...prev, { role: 'user' as const, text: userText }].slice(-12))
+
+    const composedQuery = composeVoiceQuery(userText, voiceTurns)
+    setLoading(true)
+
+    try {
+      markInteraction(visitorId)
+      const data = await fetchAdvisorResult({
+        query: composedQuery,
+        filters,
+      })
+
+      setResult(data)
+      markGuideConversation(visitorId)
+
+      const assistantText = buildVoiceReplyText(data)
+      setVoiceTurns((prev) => [...prev, { role: 'assistant' as const, text: assistantText }].slice(-12))
+      speakText(assistantText, {
+        onStart: () => setSpeaking(true),
+        onEnd: () => {
+          setSpeaking(false)
+          if (voiceSessionActiveRef.current) {
+            startListening()
+          }
+        },
+      })
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -216,12 +294,21 @@ export default function DemoPage() {
             </button>
             <button
               onClick={listening ? stopListening : startListening}
-              disabled={loading}
+              disabled={loading || voiceSessionActive}
               className={`rounded-xl px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60 ${
                 listening ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-sky-600 hover:bg-sky-500'
               }`}
             >
               {listening ? '停止语音输入' : '语音输入并推荐'}
+            </button>
+            <button
+              onClick={voiceSessionActive ? stopVoiceSession : startVoiceSession}
+              disabled={loading && !voiceSessionActive}
+              className={`rounded-xl px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60 ${
+                voiceSessionActive ? 'bg-rose-600 hover:bg-rose-500' : 'bg-violet-600 hover:bg-violet-500'
+              }`}
+            >
+              {voiceSessionActive ? '结束实时语音导购' : '开启实时语音导购'}
             </button>
           </div>
           {result ? (
@@ -232,6 +319,29 @@ export default function DemoPage() {
           ) : null}
         </div>
         {voiceStatus ? <p className="mt-2 text-xs text-sky-200">{voiceStatus}</p> : null}
+        {voiceSessionActive ? (
+          <p className="mt-1 text-xs text-violet-200">当前模式：实时语音导购（自动聆听 → 推荐 → 语音播报 → 继续聆听）</p>
+        ) : null}
+
+        {voiceTurns.length ? (
+          <div className="mt-4 rounded-xl border border-violet-300/20 bg-[#0a1623] p-3">
+            <p className="text-xs font-semibold tracking-wide text-violet-200">语音导购对话</p>
+            <div className="mt-2 max-h-44 space-y-2 overflow-y-auto pr-1">
+              {voiceTurns.map((turn, index) => (
+                <div
+                  key={`${turn.role}-${index}`}
+                  className={`rounded-lg px-3 py-2 text-xs leading-6 ${
+                    turn.role === 'assistant'
+                      ? 'bg-violet-500/15 text-violet-100'
+                      : 'bg-sky-500/15 text-sky-100'
+                  }`}
+                >
+                  {turn.role === 'assistant' ? 'AI导购：' : '你：'} {turn.text}
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </section>
 
       {result ? (
@@ -340,6 +450,49 @@ function speakRecommendationSummary(data: AdvisorResponse) {
   const utter = new SpeechSynthesisUtterance(summary)
   utter.lang = 'zh-CN'
   utter.rate = 1.02
+  window.speechSynthesis.speak(utter)
+}
+
+function buildVoiceReplyText(data: AdvisorResponse) {
+  const topCars = data.recommendations.slice(0, 3)
+  if (!topCars.length) {
+    return '当前条件下暂时没有匹配车型。你可以放宽预算、减少品牌限制，或者告诉我更偏向SUV还是轿车。'
+  }
+
+  const modelNames = topCars.map((item) => `${item.car.brand}${item.car.model}`).join('、')
+  const first = topCars[0]
+  return `我先给你推荐${modelNames}。首推${first.car.brand}${first.car.model}，价格大约${first.car.priceMinWan}到${first.car.priceMaxWan}万，${first.reason}。你想继续看空间、智驾还是能耗对比？`
+}
+
+function composeVoiceQuery(latestUtterance: string, history: VoiceTurn[]) {
+  const recentUserInputs = history
+    .filter((item) => item.role === 'user')
+    .slice(-3)
+    .map((item) => item.text)
+
+  if (!recentUserInputs.length) return latestUtterance
+  return `历史需求：${recentUserInputs.join('；')}。最新需求：${latestUtterance}`
+}
+
+function speakText(
+  text: string,
+  hooks?: {
+    onStart?: () => void
+    onEnd?: () => void
+  },
+) {
+  if (!('speechSynthesis' in window)) {
+    hooks?.onEnd?.()
+    return
+  }
+
+  window.speechSynthesis.cancel()
+  const utter = new SpeechSynthesisUtterance(text)
+  utter.lang = 'zh-CN'
+  utter.rate = 1.03
+  utter.onstart = () => hooks?.onStart?.()
+  utter.onend = () => hooks?.onEnd?.()
+  utter.onerror = () => hooks?.onEnd?.()
   window.speechSynthesis.speak(utter)
 }
 
