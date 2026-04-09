@@ -23,12 +23,14 @@ const LOCAL_FALLBACK: AdvisorResponse = {
 }
 
 export async function fetchAdvisorResult(payload: AdvisorPayload): Promise<AdvisorResponse> {
-  const timeout = 12000
+  const timeout = 30000
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeout)
+  const apiBase = String(import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '')
+  const endpoint = apiBase ? `${apiBase}/api/experience-guide` : '/api/experience-guide'
 
   try {
-    const response = await fetch('/api/experience-guide', {
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

@@ -29,12 +29,14 @@ npm install
 LLM_API_KEY=your_api_key
 LLM_MODEL=your_model
 LLM_API_URL=https://ark.cn-beijing.volces.com/api/v3/chat/completions
+VITE_API_BASE_URL=
 ```
 
 说明：
 
 - 未配置 LLM 时，系统会自动使用规则解析用户自然语言。
 - 仅影响自然语言需求抽取，不影响基础筛选推荐流程。
+- 如果本地 `npm run dev` 环境下 `/api` 不可用，可以设置 `VITE_API_BASE_URL` 指向已部署站点域名，例如 `https://your-domain.vercel.app`。
 
 3. 启动开发服务
 
@@ -94,3 +96,10 @@ npm run dev
 
 - 数据来源于搜狐汽车，价格与配置以官方最新信息为准。
 - 如搜狐与官网冲突，优先展示官网信息。
+
+## API排查建议
+
+1. 先直接调用线上接口 `POST /api/experience-guide` 验证是否返回 `recommendations`。
+2. 若返回 404，请确认部署分支与接口路径；若返回 405，请确认方法为 POST。
+3. 若返回 5xx，请在 Vercel Functions 日志中查看错误详情。
+4. 修改 Vercel 环境变量后必须 Redeploy 才会生效。

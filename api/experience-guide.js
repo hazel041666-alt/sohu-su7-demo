@@ -2,6 +2,7 @@ import * as cheerio from 'cheerio'
 
 const DEFAULT_API_URL = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'
 const CACHE_TTL_MS = 15 * 60 * 1000
+const SCRAPE_FETCH_TIMEOUT_MS = 3500
 
 const SOURCE_URLS = [
   'https://auto.sohu.com/',
@@ -412,16 +413,22 @@ async function scrapeSohuModels() {
 }
 
 async function fetchPage(url) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), SCRAPE_FETCH_TIMEOUT_MS)
+
   try {
     const response = await fetch(url, {
+      signal: controller.signal,
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
       },
     })
+    clearTimeout(timer)
     if (!response.ok) return ''
     return await response.text()
   } catch {
+    clearTimeout(timer)
     return ''
   }
 }
