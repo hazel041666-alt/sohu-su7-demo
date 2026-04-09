@@ -245,7 +245,7 @@ async function scrapeSohuModels() {
   if (!table) return []
 
   const decoded = decodeNuxtIndexedTable(table)
-  const groups = decoded?.data?.fetchRecoAndPickCar?.recommendModelData?.value
+  const groups = decoded?.data?.fetchRecoAndPickCar?.pickCarModelData?.value
   if (!Array.isArray(groups)) return []
 
   const rows = []
