@@ -25,7 +25,7 @@ export default function DemoPage() {
     if (loading) return
 
     setLoading(true)
-    markInteraction(visitorId)
+    safeTrack(() => markInteraction(visitorId))
 
     try {
       const data = await fetchAdvisorResult({
@@ -34,7 +34,7 @@ export default function DemoPage() {
       })
 
       setResult(data)
-      markGuideConversation(visitorId)
+      safeTrack(() => markGuideConversation(visitorId))
     } finally {
       setLoading(false)
     }
@@ -230,6 +230,14 @@ export default function DemoPage() {
       </footer>
     </main>
   )
+}
+
+function safeTrack(fn: () => void) {
+  try {
+    fn()
+  } catch (error) {
+    console.warn('Analytics skipped due to storage/environment error:', error)
+  }
 }
 
 function splitBrandInput(value: string) {
