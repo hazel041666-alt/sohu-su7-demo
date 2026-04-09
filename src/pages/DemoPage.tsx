@@ -1,5 +1,5 @@
 import { useMemo, useState, type CSSProperties } from 'react'
-import { fetchAdvisorResult, getInstantFallbackResult } from '../lib/ai'
+import { fetchAdvisorResult } from '../lib/ai'
 import { markGuideConversation, markInteraction, registerPageVisit } from '../lib/analytics'
 import type { AdvisorResponse, DrivingScene, PowerType, UserDemand } from '../lib/types'
 
@@ -19,13 +19,14 @@ export default function DemoPage() {
   const [filters, setFilters] = useState<UserDemand>(defaultFilters)
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<AdvisorResponse | null>(null)
+  const [errorMessage, setErrorMessage] = useState('')
   const visitorId = useMemo(() => registerPageVisit(), [])
 
   const submit = async () => {
     if (loading) return
 
     setLoading(true)
-    setResult(getInstantFallbackResult('正在请求实时推荐，先展示本地参考结果...'))
+    setErrorMessage('')
     safeTrack(() => markInteraction(visitorId))
 
     try {
@@ -36,6 +37,10 @@ export default function DemoPage() {
 
       setResult(data)
       safeTrack(() => markGuideConversation(visitorId))
+    } catch (error) {
+      setResult(null)
+      const detail = error instanceof Error ? error.message : '未知错误'
+      setErrorMessage(`搜狐实时数据获取失败：${detail}`)
     } finally {
       setLoading(false)
     }
@@ -138,6 +143,12 @@ export default function DemoPage() {
             </p>
           ) : null}
         </div>
+
+        {errorMessage ? (
+          <div className="mt-4 rounded-xl border border-[#f4c9c4] bg-[#fff3f1] p-3 text-sm text-[#983329]">
+            {errorMessage}
+          </div>
+        ) : null}
       </section>
 
       {result ? (
@@ -153,7 +164,7 @@ export default function DemoPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <h3 className="text-lg font-bold text-[#15457a]">{item.car.brand} {item.car.model}</h3>
-                        <p className="mt-1 text-xs text-[#55708a]">{item.car.category} ｜ {item.car.level} ｜ 推荐分 {item.score}</p>
+                        <p className="mt-1 text-xs text-[#55708a]">推荐分 {item.score} ｜ 数据来源：搜狐汽车</p>
                       </div>
                       <a
                         href={item.car.sourceUrl}
@@ -166,18 +177,8 @@ export default function DemoPage() {
                     </div>
                     <p className="mt-2 text-sm text-[#1f3d59]">推荐理由：{item.reason}</p>
                     <p className="mt-2 text-xs text-[#597189]">
-                      关键参数：{item.car.priceMinWan}-{item.car.priceMaxWan}万 ｜ {item.car.powerType} ｜ {item.car.seats}座 ｜ {item.car.rangeOrFuel}
+                      关键参数：{item.car.priceMinWan}-{item.car.priceMaxWan}万 ｜ {item.car.powerType}
                     </p>
-                    {item.car.officialUrl ? (
-                      <a
-                        href={item.car.officialUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-2 inline-block text-xs text-[#0a8a63] underline-offset-2 hover:underline"
-                      >
-                        查看品牌官网参数（冲突时已优先官网）
-                      </a>
-                    ) : null}
                   </div>
                 ))
               ) : (
@@ -191,18 +192,13 @@ export default function DemoPage() {
           <article className="rounded-2xl border border-[#d9e8fb] bg-white/92 p-5 shadow-[0_14px_34px_rgba(17,67,120,.08)] reveal-up" style={{ '--delay': '180ms' } as CSSProperties}>
             <h2 className="text-xl font-bold text-[#163452]">关键参数对比</h2>
             <div className="mt-3 overflow-x-auto">
-              <table className="w-full min-w-[720px] border-collapse text-left text-xs text-[#24415e]">
+              <table className="w-full min-w-[560px] border-collapse text-left text-xs text-[#24415e]">
                 <thead>
                   <tr className="border-b border-[#d5e4f5] text-[#4f6c88]">
                     <th className="px-2 py-2">车型</th>
                     <th className="px-2 py-2">指导价</th>
-                    <th className="px-2 py-2">级别</th>
-                    <th className="px-2 py-2">车身尺寸/轴距</th>
-                    <th className="px-2 py-2">座位数</th>
                     <th className="px-2 py-2">动力类型</th>
-                    <th className="px-2 py-2">续航或油耗</th>
-                    <th className="px-2 py-2">智驾</th>
-                    <th className="px-2 py-2">车机</th>
+                    <th className="px-2 py-2">搜狐来源</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -210,13 +206,12 @@ export default function DemoPage() {
                     <tr key={`cmp-${car.id}`} className="border-b border-[#e4eef9] align-top">
                       <td className="px-2 py-2 font-semibold text-[#173a5e]">{car.brand} {car.model}</td>
                       <td className="px-2 py-2">{car.priceMinWan}-{car.priceMaxWan}万</td>
-                      <td className="px-2 py-2">{car.level}</td>
-                      <td className="px-2 py-2">{car.sizeMm} / {car.wheelbaseMm || '待补充'}mm</td>
-                      <td className="px-2 py-2">{car.seats}</td>
                       <td className="px-2 py-2">{car.powerType}</td>
-                      <td className="px-2 py-2">{car.rangeOrFuel}</td>
-                      <td className="px-2 py-2">{car.adas}</td>
-                      <td className="px-2 py-2">{car.cockpit}</td>
+                      <td className="px-2 py-2">
+                        <a href={car.sourceUrl} target="_blank" rel="noreferrer" className="text-[#2068b7] underline-offset-2 hover:underline">
+                          打开车型页
+                        </a>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -227,7 +222,7 @@ export default function DemoPage() {
       ) : null}
 
       <footer className="mx-auto mt-6 w-full max-w-6xl rounded-xl border border-[#d7e8fc] bg-white/85 px-4 py-3 text-xs leading-6 text-[#5f7891] shadow-[0_10px_30px_rgba(18,81,152,.08)] reveal-up" style={{ '--delay': '220ms' } as CSSProperties}>
-        数据来源于搜狐汽车，价格与配置以官方最新信息为准。若搜狐与品牌官网参数冲突，系统优先展示官网信息。
+        数据来源：搜狐汽车站点（auto.sohu.com 与 db.auto.sohu.com）。若实时抓取失败，页面会直接报错，不再展示本地假数据。
       </footer>
     </main>
   )

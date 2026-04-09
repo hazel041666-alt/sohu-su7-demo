@@ -1,127 +1,10 @@
-import * as cheerio from 'cheerio'
-
 const DEFAULT_API_URL = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'
-const CACHE_TTL_MS = 15 * 60 * 1000
-const SCRAPE_FETCH_TIMEOUT_MS = 3500
-
-const SOURCE_URLS = [
-  'https://auto.sohu.com/',
-  'https://db.auto.sohu.com/',
-]
+const CACHE_TTL_MS = 10 * 60 * 1000
+const SCRAPE_FETCH_TIMEOUT_MS = 8000
+const SOHU_DB_URL = 'https://db.auto.sohu.com/home/?pcm=202.412_16_0.0.0&scm=thor.412_14-201000.0.0-0-0-0-0.0'
 
 let cachedModels = []
 let cacheExpiresAt = 0
-
-const seededModels = [
-  {
-    id: 'byd-qin-l-ev',
-    brand: '比亚迪',
-    model: '秦L EV',
-    category: '轿车',
-    seats: 5,
-    powerType: '纯电',
-    priceMinWan: 11.98,
-    priceMaxWan: 16.98,
-    level: '中型车',
-    sizeMm: '4830x1900x1495',
-    wheelbaseMm: 2790,
-    rangeOrFuel: 'CLTC 510-610km',
-    adas: 'L2级辅助驾驶，AEB/ACC/LKA',
-    cockpit: 'DiLink 语音+导航+生态应用',
-    sourceUrl: buildSohuModelSearchUrl('比亚迪', '秦L EV'),
-    officialUrl: 'https://www.byd.com/cn/car/qinl-ev',
-  },
-  {
-    id: 'tesla-model3',
-    brand: '特斯拉',
-    model: 'Model 3',
-    category: '轿车',
-    seats: 5,
-    powerType: '纯电',
-    priceMinWan: 23.19,
-    priceMaxWan: 33.59,
-    level: '中型车',
-    sizeMm: '4720x1848x1442',
-    wheelbaseMm: 2875,
-    rangeOrFuel: 'CLTC 606-713km',
-    adas: '基础辅助驾驶，支持NOA能力扩展',
-    cockpit: '15.4英寸中控，语音与多媒体生态',
-    sourceUrl: buildSohuModelSearchUrl('特斯拉', 'Model 3'),
-    officialUrl: 'https://www.tesla.cn/model3',
-  },
-  {
-    id: 'geely-xingyue-l',
-    brand: '吉利',
-    model: '星越L',
-    category: 'SUV',
-    seats: 5,
-    powerType: '燃油',
-    priceMinWan: 13.72,
-    priceMaxWan: 18.52,
-    level: '紧凑型SUV',
-    sizeMm: '4770x1895x1689',
-    wheelbaseMm: 2845,
-    rangeOrFuel: 'WLTC 7.5L/100km',
-    adas: 'L2级辅助驾驶，360全景',
-    cockpit: '多联屏+语音助手+手机互联',
-    sourceUrl: buildSohuModelSearchUrl('吉利', '星越L'),
-    officialUrl: 'https://www.geely.com',
-  },
-  {
-    id: 'li-auto-l6',
-    brand: '理想',
-    model: 'L6',
-    category: 'SUV',
-    seats: 5,
-    powerType: '增程',
-    priceMinWan: 24.98,
-    priceMaxWan: 27.98,
-    level: '中大型SUV',
-    sizeMm: '4925x1960x1735',
-    wheelbaseMm: 2920,
-    rangeOrFuel: 'CLTC综合续航1300km+',
-    adas: '高速NOA，城区辅助驾驶',
-    cockpit: '双联屏+语音大模型+后排娱乐',
-    sourceUrl: buildSohuModelSearchUrl('理想', 'L6'),
-    officialUrl: 'https://www.lixiang.com',
-  },
-  {
-    id: 'toyota-sienna',
-    brand: '丰田',
-    model: '赛那',
-    category: 'MPV',
-    seats: 7,
-    powerType: '燃油',
-    priceMinWan: 29.98,
-    priceMaxWan: 41.18,
-    level: '中大型MPV',
-    sizeMm: '5165x1995x1765',
-    wheelbaseMm: 3060,
-    rangeOrFuel: 'WLTC 5.9-6.6L/100km',
-    adas: 'TSS辅助驾驶系统',
-    cockpit: '语音交互+多屏互联',
-    sourceUrl: buildSohuModelSearchUrl('丰田', '赛那'),
-    officialUrl: 'https://www.gac-toyota.com.cn',
-  },
-  {
-    id: 'ford-ranger',
-    brand: '福特',
-    model: 'Ranger',
-    category: '皮卡',
-    seats: 5,
-    powerType: '柴油',
-    priceMinWan: 14.58,
-    priceMaxWan: 24.48,
-    level: '中型皮卡',
-    sizeMm: '5370x1918x1880',
-    wheelbaseMm: 3270,
-    rangeOrFuel: '综合油耗约8.4L/100km',
-    adas: 'L2辅助驾驶，拖挂辅助',
-    cockpit: '大屏导航+语音控制',
-    sourceUrl: buildSohuModelSearchUrl('福特', 'Ranger'),
-    officialUrl: 'https://www.ford.com.cn',
-  },
-]
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -134,30 +17,24 @@ export default async function handler(req, res) {
 
   try {
     const marketModels = await getMarketModels()
-    const parsed = await parseDemand(query, filters)
-    const recommendations = recommendCars(marketModels, parsed.demand).slice(0, 3)
-
-    if (recommendations.length < 3) {
-      const fill = recommendCars(marketModels, {}).slice(0, 3 - recommendations.length)
-      for (const item of fill) {
-        if (!recommendations.some((x) => x.car.id === item.car.id)) {
-          recommendations.push(item)
-        }
-      }
+    if (!marketModels.length) {
+      throw new Error('搜狐汽车数据抓取为空，请稍后重试')
     }
 
+    const parsed = await parseDemand(query, filters)
+    const recommendations = recommendCars(marketModels, parsed.demand).slice(0, 3)
     const comparison = recommendations.map((item) => item.car)
 
     res.status(200).json({
       parsed,
       recommendations,
       comparison,
-      sourceDisclaimer: '数据来源于搜狐汽车，价格与配置以官方最新信息为准。当搜狐与官网冲突时，已优先采用官网参数。',
+      sourceDisclaimer: '推荐数据来自搜狐汽车车库实时页面，点击来源可跳转到搜狐对应车型页。',
       fetchedAt: new Date().toISOString(),
       sourceStats: {
         totalModels: marketModels.length,
-        liveScraped: Math.max(marketModels.length - seededModels.length, 0),
-        seeded: seededModels.length,
+        liveScraped: marketModels.length,
+        seeded: 0,
       },
     })
   } catch (error) {
@@ -323,9 +200,9 @@ function parseDemandByRules(query) {
   if (/家用|带娃|家庭/.test(text)) demand.scene = '家用'
   if (/长途|自驾|高速/.test(text)) demand.scene = '长途'
 
-  if (/纯电|电车|EV/.test(text)) demand.powerPreference = '纯电'
-  if (/插混|PHEV/.test(text)) demand.powerPreference = '插混'
-  if (/增程/.test(text)) demand.powerPreference = '增程'
+  if (/纯电|电车|EV/i.test(text)) demand.powerPreference = '纯电'
+  if (/插混|PHEV/i.test(text)) demand.powerPreference = '插混'
+  if (/增程/i.test(text)) demand.powerPreference = '增程'
   if (/燃油/.test(text)) demand.powerPreference = '燃油'
   if (/柴油/.test(text)) demand.powerPreference = '柴油'
 
@@ -350,66 +227,36 @@ async function getMarketModels() {
     return cachedModels
   }
 
-  const live = await scrapeSohuModels()
-  const merged = mergeAndPreferOfficial(seededModels, live)
-  cachedModels = merged
-  cacheExpiresAt = now + CACHE_TTL_MS
-  return merged
-}
-
-function mergeAndPreferOfficial(seed, live) {
-  const map = new Map()
-
-  for (const item of [...seed, ...live]) {
-    const key = modelKey(item.brand, item.model)
-    const old = map.get(key)
-    if (!old) {
-      map.set(key, item)
-      continue
-    }
-
-    map.set(key, {
-      ...old,
-      ...item,
-      officialUrl: item.officialUrl || old.officialUrl,
-      sourceUrl: item.sourceUrl || old.sourceUrl || buildSohuModelSearchUrl(item.brand, item.model),
-      level: item.level || old.level,
-      sizeMm: item.sizeMm || old.sizeMm,
-      wheelbaseMm: item.wheelbaseMm || old.wheelbaseMm,
-      rangeOrFuel: item.rangeOrFuel || old.rangeOrFuel,
-      adas: item.adas || old.adas,
-      cockpit: item.cockpit || old.cockpit,
-    })
+  const models = await scrapeSohuModels()
+  if (!models.length) {
+    throw new Error('搜狐页面暂无可用车型数据')
   }
 
-  return [...map.values()]
-}
-
-function modelKey(brand, model) {
-  return `${String(brand)}-${String(model)}`
-    .toLowerCase()
-    .replace(/\s+/g, '')
-    .replace(/[^a-z0-9\u4e00-\u9fa5]/g, '')
-}
-
-function buildSohuModelSearchUrl(brand, model) {
-  const keyword = `${String(brand)} ${String(model)} 参数 报价`
-  return `https://search.sohu.com/search?keyword=${encodeURIComponent(keyword)}`
+  cachedModels = models
+  cacheExpiresAt = now + CACHE_TTL_MS
+  return models
 }
 
 async function scrapeSohuModels() {
-  const requests = SOURCE_URLS.map((url) => fetchPage(url))
-  const pages = await Promise.allSettled(requests)
+  const html = await fetchPage(SOHU_DB_URL)
+  if (!html) return []
 
-  const models = []
+  const table = extractNuxtDataTable(html)
+  if (!table) return []
 
-  for (const result of pages) {
-    if (result.status !== 'fulfilled' || !result.value) continue
-    const extracted = extractCarsFromHtml(result.value)
-    models.push(...extracted)
+  const decoded = decodeNuxtIndexedTable(table)
+  const groups = decoded?.data?.fetchRecoAndPickCar?.recommendModelData?.value
+  if (!Array.isArray(groups)) return []
+
+  const rows = []
+  for (const group of groups) {
+    const models = Array.isArray(group?.models) ? group.models : []
+    for (const model of models) {
+      rows.push(model)
+    }
   }
 
-  return normalizeExtracted(models)
+  return normalizeExtracted(rows)
 }
 
 async function fetchPage(url) {
@@ -433,109 +280,123 @@ async function fetchPage(url) {
   }
 }
 
-function extractCarsFromHtml(html) {
-  if (!html) return []
+function extractNuxtDataTable(html) {
+  const match = String(html).match(/<script[^>]+id=["']__NUXT_DATA__["'][^>]*>([\s\S]*?)<\/script>/i)
+  if (!match) return null
 
-  const $ = cheerio.load(html)
-  const rows = []
+  try {
+    const table = JSON.parse(match[1])
+    return Array.isArray(table) ? table : null
+  } catch {
+    return null
+  }
+}
 
-  $('a').each((_idx, node) => {
-    const text = $(node).text().replace(/\s+/g, ' ').trim()
-    let href = String($(node).attr('href') || '').trim()
-    if (!text || !href) return
+function decodeNuxtIndexedTable(table) {
+  const cache = new Map()
+  const resolving = new Set()
 
-    // Allow Sohu model pages natively (e.g., /model_1043)
-    if (href.startsWith('/model_')) {
-      href = `https://db.auto.sohu.com${href}`
-      rows.push({ text, href })
-      return
+  const resolveToken = (token) => {
+    if (typeof token === 'number' && Number.isInteger(token) && token >= 0 && token < table.length) {
+      return resolveRef(token)
+    }
+    return token
+  }
+
+  const resolveStored = (entry) => {
+    if (Array.isArray(entry)) {
+      if (entry.length === 2 && typeof entry[0] === 'string' && ['ShallowReactive', 'Reactive', 'Ref'].includes(entry[0])) {
+        return resolveToken(entry[1])
+      }
+      return entry.map((item) => resolveToken(item))
     }
 
-    const looksLikeModel = /[A-Za-z\u4e00-\u9fa5]+\s?[A-Za-z0-9\-]+/.test(text)
-    const includesAuto = /auto\.sohu\.com|db\.auto\.sohu\.com/.test(href)
-    if (!looksLikeModel || !includesAuto) return
+    if (entry && typeof entry === 'object') {
+      const out = {}
+      for (const [k, v] of Object.entries(entry)) {
+        out[k] = resolveToken(v)
+      }
+      return out
+    }
 
-    rows.push({ text, href })
-  })
+    return entry
+  }
 
-  return rows
+  const resolveRef = (index) => {
+    if (cache.has(index)) return cache.get(index)
+    if (resolving.has(index)) return null
+
+    resolving.add(index)
+    const resolved = resolveStored(table[index])
+    resolving.delete(index)
+    cache.set(index, resolved)
+    return resolved
+  }
+
+  return resolveRef(0)
 }
 
 function normalizeExtracted(rows) {
-  const models = []
-  let index = 0
+  const uniq = new Map()
 
-  for (const item of rows) {
-    const text = item.text
-    const modelText = text.replace(/报价|参数|图片|论坛|口碑/g, '').trim()
-    if (!modelText || modelText.length < 2 || modelText.length > 36) continue
+  for (const row of rows) {
+    const modelId = Number(row?.model_id)
+    const model = String(row?.name || '').trim()
+    const brand = String(row?.brand_name || '').trim()
+    const minPrice = toNumber(row?.min_price)
+    const maxPrice = toNumber(row?.max_price)
 
-    const parts = modelText.split(/\s+/)
-    const brand = parts[0]
-    const model = parts.slice(1).join(' ') || parts[0]
-    if (!brand || !model) continue
+    if (!modelId || !model || !brand || !Number.isFinite(minPrice) || !Number.isFinite(maxPrice)) {
+      continue
+    }
 
-    const lower = modelText.toLowerCase()
-    const category = lower.includes('mpv')
-      ? 'MPV'
-      : lower.includes('suv')
-        ? 'SUV'
-        : /皮卡|pickup/.test(modelText)
-          ? '皮卡'
-          : '轿车'
+    const key = modelKey(brand, model)
+    if (uniq.has(key)) continue
 
-    const powerType = /ev|纯电|电动/.test(lower)
-      ? '纯电'
-      : /增程/.test(modelText)
-        ? '增程'
-        : /插混|phev/.test(lower)
-          ? '插混'
-          : '燃油'
-
-    index += 1
-    models.push({
-      id: `live-${index}-${brand}-${model}`.replace(/\s+/g, '-').toLowerCase(),
+    const powerType = guessPowerType(model)
+    uniq.set(key, {
+      id: `sohu-model-${modelId}`,
       brand,
       model,
-      category,
-      seats: /7座/.test(modelText) ? 7 : 5,
+      category: '其他',
+      seats: undefined,
       powerType,
-      priceMinWan: 10,
-      priceMaxWan: 25,
-      level: '待补充',
-      sizeMm: '待补充',
+      priceMinWan: minPrice,
+      priceMaxWan: maxPrice,
+      level: '以搜狐页面为准',
+      sizeMm: '-',
       wheelbaseMm: 0,
-      rangeOrFuel: powerType === '纯电' ? '续航待补充' : '油耗待补充',
-      adas: '辅助驾驶信息待补充',
-      cockpit: '车机能力待补充',
-      sourceUrl: normalizeUrl(item.href),
+      rangeOrFuel: '-',
+      adas: '-',
+      cockpit: '-',
+      sourceUrl: `https://db.auto.sohu.com/model_${modelId}`,
       officialUrl: '',
     })
-  }
-
-  const uniq = new Map()
-  for (const car of models) {
-    const key = modelKey(car.brand, car.model)
-    if (!uniq.has(key)) uniq.set(key, car)
   }
 
   return [...uniq.values()]
 }
 
-function normalizeUrl(url) {
-  const value = String(url || '').trim()
-  if (!value) return 'https://auto.sohu.com/'
+function toNumber(value) {
+  const n = Number(value)
+  return Number.isFinite(n) ? n : NaN
+}
 
-  if (/^https?:\/\//i.test(value)) return value
-  if (value.startsWith('//')) return `https:${value}`
+function guessPowerType(modelName) {
+  const text = String(modelName || '').toLowerCase()
 
-  // Some pages return host-style href values like "db.auto.sohu.com/model_xxx/".
-  if (/^[a-z0-9.-]+\.[a-z]{2,}(?:\/|$)/i.test(value)) {
-    return `https://${value.replace(/^\/+/, '')}`
-  }
+  if (/dm-i|dmi|phev|插混|混动/.test(text)) return '插混'
+  if (/增程|erev/.test(text)) return '增程'
+  if (/ev|纯电|电动|新能源/.test(text)) return '纯电'
+  if (/tdi|柴油/.test(text)) return '柴油'
+  return '燃油'
+}
 
-  if (value.startsWith('/')) return `https://auto.sohu.com${value}`
-  return `https://auto.sohu.com/${value.replace(/^\.\//, '')}`
+function modelKey(brand, model) {
+  return `${String(brand)}-${String(model)}`
+    .toLowerCase()
+    .replace(/\s+/g, '')
+    .replace(/[^a-z0-9\u4e00-\u9fa5]/g, '')
 }
 
 function recommendCars(cars, demand) {
@@ -543,7 +404,7 @@ function recommendCars(cars, demand) {
     if (typeof demand.budgetMinWan === 'number' && car.priceMaxWan < demand.budgetMinWan) return false
     if (typeof demand.budgetMaxWan === 'number' && car.priceMinWan > demand.budgetMaxWan) return false
     if (demand.powerPreference && car.powerType !== demand.powerPreference) return false
-    if (demand.seats && car.seats !== demand.seats) return false
+
     if (Array.isArray(demand.brandInclude) && demand.brandInclude.length) {
       const matched = demand.brandInclude.some((name) => car.brand.includes(name))
       if (!matched) return false
@@ -581,23 +442,15 @@ function calcScore(car, demand) {
   }
 
   if (demand.scene === '通勤') {
-    if (car.category === '轿车' || car.category === 'SUV') score += 12
-    if (car.powerType === '纯电' || car.powerType === '插混') score += 8
+    if (car.category === '轿车' || car.category === 'SUV' || car.category === '其他') score += 10
   }
 
   if (demand.scene === '家用') {
-    if (car.category === 'SUV' || car.category === 'MPV') score += 14
-    if (car.seats === 7) score += 10
+    if (car.category === 'SUV' || car.category === 'MPV' || car.category === '其他') score += 12
   }
 
   if (demand.scene === '长途') {
     if (car.powerType === '燃油' || car.powerType === '增程' || car.powerType === '插混') score += 13
-    if (car.category === 'SUV' || car.category === 'MPV') score += 8
-  }
-
-  if (demand.smartNeed) {
-    const key = String(demand.smartNeed)
-    if (car.adas.includes(key) || car.cockpit.includes(key)) score += 10
   }
 
   return Math.round(score)
@@ -607,12 +460,12 @@ function buildReason(car, demand) {
   const parts = []
 
   if (demand.scene) parts.push(`适配${demand.scene}场景`)
-  if (demand.powerPreference) parts.push(`动力类型匹配${demand.powerPreference}`)
+  if (demand.powerPreference) parts.push(`动力偏好匹配${demand.powerPreference}`)
 
   if (typeof demand.budgetMinWan === 'number' || typeof demand.budgetMaxWan === 'number') {
-    parts.push(`价格区间约${car.priceMinWan}-${car.priceMaxWan}万`) 
+    parts.push(`价格区间约${car.priceMinWan}-${car.priceMaxWan}万`)
   }
 
-  parts.push(`提供${car.adas}，并支持${car.cockpit}`)
+  parts.push('来源为搜狐车库实时车型页')
   return parts.join('；')
 }
