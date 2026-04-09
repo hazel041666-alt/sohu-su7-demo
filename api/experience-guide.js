@@ -1,6 +1,7 @@
 const DEFAULT_API_URL = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'
 const CACHE_TTL_MS = 10 * 60 * 1000
 const SCRAPE_FETCH_TIMEOUT_MS = 18000
+const BRAND_CRAWL_LIMIT = 18
 const SOHU_SOURCE_URLS = [
   'https://db.auto.sohu.com/home/?pcm=202.412_16_0.0.0&scm=thor.412_14-201000.0.0-0-0-0-0.0',
   'https://db.auto.sohu.com/home/',
@@ -20,12 +21,12 @@ export default async function handler(req, res) {
   const filters = sanitizeFilters(req.body?.filters)
 
   try {
-    const marketModels = await getMarketModels()
+    const parsed = await parseDemand(query, filters)
+    const marketModels = await getMarketModels(parsed.demand)
     if (!marketModels.length) {
       throw new Error('搜狐汽车数据抓取为空，请稍后重试')
     }
 
-    const parsed = await parseDemand(query, filters)
     const recommendations = recommendCars(marketModels, parsed.demand).slice(0, 3)
     const comparison = recommendations.map((item) => item.car)
 
@@ -234,13 +235,13 @@ function mergeDemand(base, override) {
   return merged
 }
 
-async function getMarketModels() {
+async function getMarketModels(demand) {
   const now = Date.now()
   if (now < cacheExpiresAt && cachedModels.length) {
     return cachedModels
   }
 
-  const models = await scrapeSohuModels()
+  const models = await scrapeSohuModels(demand)
   if (!models.length) {
     if (cachedModels.length) {
       return cachedModels
@@ -253,7 +254,7 @@ async function getMarketModels() {
   return models
 }
 
-async function scrapeSohuModels() {
+async function scrapeSohuModels(demand) {
   const errors = []
 
   for (const url of SOHU_SOURCE_URLS) {
@@ -270,22 +271,26 @@ async function scrapeSohuModels() {
         continue
       }
 
-      const decoded = decodeNuxtIndexedTable(table)
-      const groups = decoded?.data?.fetchRecoAndPickCar?.pickCarModelData?.value
-      if (!Array.isArray(groups)) {
-        errors.push(`no_model_groups@${url}`)
+      const rows = extractModelRowsFromTable(table)
+      if (!rows.length) {
+        errors.push(`no_model_rows@${url}`)
         continue
       }
 
-      const rows = []
-      for (const group of groups) {
-        const models = Array.isArray(group?.models) ? group.models : []
-        for (const model of models) {
-          rows.push(model)
+      const decoded = decodeNuxtIndexedTable(table)
+
+      let normalized = normalizeExtracted(rows)
+
+      // Homepage pool is limited; expand by crawling selected brand pages when constraints are likely to miss.
+      if (shouldExpandPool(normalized, demand)) {
+        const brandIds = extractBrandIdsFromCatalog(decoded)
+        const picked = brandIds.slice(0, BRAND_CRAWL_LIMIT)
+        const expandedRows = await crawlBrandPages(picked)
+        if (expandedRows.length) {
+          normalized = normalizeExtracted([...rows, ...expandedRows])
         }
       }
 
-      const normalized = normalizeExtracted(rows)
       if (normalized.length) {
         lastScrapeError = ''
         return normalized
@@ -300,6 +305,110 @@ async function scrapeSohuModels() {
 
   lastScrapeError = errors.slice(0, 2).join(' | ')
   return []
+}
+
+function shouldExpandPool(models, demand) {
+  if (!Array.isArray(models) || models.length < 80) return true
+  if (typeof demand?.budgetMinWan === 'number' || typeof demand?.budgetMaxWan === 'number') return true
+  if (demand?.powerPreference) return true
+  return false
+}
+
+function extractBrandIdsFromCatalog(decoded) {
+  const groups = decoded?.data?.fetchBrandListData
+  if (!Array.isArray(groups)) return []
+
+  const ids = []
+  const seen = new Set()
+
+  for (const group of groups) {
+    const brands = Array.isArray(group?.brands) ? group.brands : []
+    for (const brand of brands) {
+      const id = Number(brand?.id)
+      if (!Number.isInteger(id) || id <= 0 || seen.has(id)) continue
+      seen.add(id)
+      ids.push(id)
+    }
+  }
+
+  return ids
+}
+
+async function crawlBrandPages(brandIds) {
+  const rows = []
+
+  for (const brandId of brandIds) {
+    try {
+      const html = await fetchPageWithRetry(`https://db.auto.sohu.com/brand_${brandId}/home.shtml`)
+      if (!html) continue
+
+      const table = extractNuxtDataTable(html)
+      if (!table) continue
+
+      rows.push(...extractModelRowsFromTable(table))
+    } catch {
+      // Ignore per-brand failure; keep partial results.
+    }
+  }
+
+  return rows
+}
+
+function extractModelRowsFromTable(table) {
+  const rows = []
+  if (!Array.isArray(table)) return rows
+
+  const resolvePrimitive = (token, depth = 0) => {
+    if (depth > 6) return token
+    if (typeof token !== 'number' || !Number.isInteger(token) || token < 0 || token >= table.length) {
+      return token
+    }
+
+    const ref = table[token]
+    if (ref == null || typeof ref === 'string' || typeof ref === 'number' || typeof ref === 'boolean') {
+      return ref
+    }
+
+    if (Array.isArray(ref) && ref.length === 2 && typeof ref[0] === 'string' && ['ShallowReactive', 'Reactive', 'Ref'].includes(ref[0])) {
+      return resolvePrimitive(ref[1], depth + 1)
+    }
+
+    return token
+  }
+
+  for (const entry of table) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue
+    if (!Object.prototype.hasOwnProperty.call(entry, 'model_id')) continue
+
+    const modelId = Number(resolvePrimitive(entry.model_id))
+    const name = String(resolvePrimitive(entry.name) || resolvePrimitive(entry.model_name_zh) || '').trim()
+    const minPrice = toNumber(
+      resolvePrimitive(entry.min_price) ?? resolvePrimitive(entry.min_price_guide)
+    )
+    const maxPrice = toNumber(
+      resolvePrimitive(entry.max_price) ?? resolvePrimitive(entry.max_price_guide)
+    )
+
+    if (!modelId || !name || !Number.isFinite(minPrice) || !Number.isFinite(maxPrice) || maxPrice <= 0) {
+      continue
+    }
+
+    rows.push({
+      model_id: modelId,
+      name,
+      brand_name: String(
+        resolvePrimitive(entry.brand_name) ||
+          resolvePrimitive(entry.brand_name_zh) ||
+          resolvePrimitive(entry.master_brand_name) ||
+          resolvePrimitive(entry.manufacturer_name) ||
+          ''
+      ).trim(),
+      min_price: minPrice,
+      max_price: maxPrice,
+    })
+  }
+
+  return rows
 }
 
 async function fetchPageWithRetry(url) {
@@ -402,7 +511,9 @@ function normalizeExtracted(rows) {
   for (const row of rows) {
     const modelId = Number(row?.model_id)
     const model = String(row?.name || '').trim()
-    const brand = String(row?.brand_name || '').trim()
+    const brand = String(
+      row?.brand_name || row?.master_brand_name || row?.brand || row?.brandName || ''
+    ).trim()
     const minPrice = toNumber(row?.min_price)
     const maxPrice = toNumber(row?.max_price)
 
