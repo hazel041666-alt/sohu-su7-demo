@@ -1,10 +1,14 @@
 const DEFAULT_API_URL = 'https://ark.cn-beijing.volces.com/api/v3/chat/completions'
 const CACHE_TTL_MS = 10 * 60 * 1000
-const SCRAPE_FETCH_TIMEOUT_MS = 8000
-const SOHU_DB_URL = 'https://db.auto.sohu.com/home/?pcm=202.412_16_0.0.0&scm=thor.412_14-201000.0.0-0-0-0-0.0'
+const SCRAPE_FETCH_TIMEOUT_MS = 18000
+const SOHU_SOURCE_URLS = [
+  'https://db.auto.sohu.com/home/?pcm=202.412_16_0.0.0&scm=thor.412_14-201000.0.0-0-0-0-0.0',
+  'https://db.auto.sohu.com/home/',
+]
 
 let cachedModels = []
 let cacheExpiresAt = 0
+let lastScrapeError = ''
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -229,7 +233,10 @@ async function getMarketModels() {
 
   const models = await scrapeSohuModels()
   if (!models.length) {
-    throw new Error('搜狐页面暂无可用车型数据')
+    if (cachedModels.length) {
+      return cachedModels
+    }
+    throw new Error(`搜狐页面暂无可用车型数据（${lastScrapeError || '抓取失败'}）`)
   }
 
   cachedModels = models
@@ -238,30 +245,71 @@ async function getMarketModels() {
 }
 
 async function scrapeSohuModels() {
-  const html = await fetchPage(SOHU_DB_URL)
-  if (!html) return []
+  const errors = []
 
-  const table = extractNuxtDataTable(html)
-  if (!table) return []
+  for (const url of SOHU_SOURCE_URLS) {
+    try {
+      const html = await fetchPageWithRetry(url)
+      if (!html) {
+        errors.push(`empty_html@${url}`)
+        continue
+      }
 
-  const decoded = decodeNuxtIndexedTable(table)
-  const groups = decoded?.data?.fetchRecoAndPickCar?.pickCarModelData?.value
-  if (!Array.isArray(groups)) return []
+      const table = extractNuxtDataTable(html)
+      if (!table) {
+        errors.push(`no_nuxt_payload@${url}`)
+        continue
+      }
 
-  const rows = []
-  for (const group of groups) {
-    const models = Array.isArray(group?.models) ? group.models : []
-    for (const model of models) {
-      rows.push(model)
+      const decoded = decodeNuxtIndexedTable(table)
+      const groups = decoded?.data?.fetchRecoAndPickCar?.pickCarModelData?.value
+      if (!Array.isArray(groups)) {
+        errors.push(`no_model_groups@${url}`)
+        continue
+      }
+
+      const rows = []
+      for (const group of groups) {
+        const models = Array.isArray(group?.models) ? group.models : []
+        for (const model of models) {
+          rows.push(model)
+        }
+      }
+
+      const normalized = normalizeExtracted(rows)
+      if (normalized.length) {
+        lastScrapeError = ''
+        return normalized
+      }
+
+      errors.push(`normalized_empty@${url}`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'unknown_scrape_error'
+      errors.push(`${message}@${url}`)
     }
   }
 
-  return normalizeExtracted(rows)
+  lastScrapeError = errors.slice(0, 2).join(' | ')
+  return []
 }
 
-async function fetchPage(url) {
+async function fetchPageWithRetry(url) {
+  let lastError = null
+
+  for (const timeout of [12000, SCRAPE_FETCH_TIMEOUT_MS]) {
+    try {
+      return await fetchPage(url, timeout)
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  throw lastError || new Error('fetch_failed')
+}
+
+async function fetchPage(url, timeoutMs) {
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), SCRAPE_FETCH_TIMEOUT_MS)
+  const timer = setTimeout(() => controller.abort(), timeoutMs)
 
   try {
     const response = await fetch(url, {
@@ -272,11 +320,14 @@ async function fetchPage(url) {
       },
     })
     clearTimeout(timer)
-    if (!response.ok) return ''
+    if (!response.ok) throw new Error(`source_status_${response.status}`)
     return await response.text()
-  } catch {
+  } catch (error) {
     clearTimeout(timer)
-    return ''
+    if (error instanceof Error && error.name === 'AbortError') {
+      throw new Error(`source_timeout_${timeoutMs}ms`)
+    }
+    throw error
   }
 }
 
