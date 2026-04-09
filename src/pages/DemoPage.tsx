@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { fetchAdvisorResult } from '../lib/ai'
 import { markGuideConversation, markInteraction, registerPageVisit } from '../lib/analytics'
 import type { AdvisorResponse, DrivingScene, PowerType, UserDemand } from '../lib/types'
@@ -206,17 +206,17 @@ export default function DemoPage() {
 
   return (
     <main className="relative min-h-screen overflow-hidden px-4 pb-14 pt-6 md:px-8">
-      <div className="pointer-events-none absolute -left-16 top-10 h-72 w-72 rounded-full bg-[#7fccff]/35 blur-3xl" />
-      <div className="pointer-events-none absolute -right-16 top-28 h-80 w-80 rounded-full bg-[#b8d9ff]/45 blur-3xl" />
+      <div className="pointer-events-none absolute -left-16 top-10 h-72 w-72 rounded-full bg-[#7fccff]/35 blur-3xl float-card" style={{ '--float-delay': '120ms' } as CSSProperties} />
+      <div className="pointer-events-none absolute -right-16 top-28 h-80 w-80 rounded-full bg-[#b8d9ff]/45 blur-3xl float-card" style={{ '--float-delay': '540ms' } as CSSProperties} />
 
-      <section className="relative mx-auto w-full max-w-6xl rounded-3xl border border-[#d6e7fb] bg-white/90 p-5 shadow-[0_24px_80px_rgba(10,70,140,.12)] md:p-8">
-        <p className="text-xs font-semibold tracking-[0.24em] text-[#2b6cb6]">SOHU AUTO ADVISOR DEMO</p>
-        <h1 className="mt-3 text-3xl font-extrabold leading-tight text-[#12263a] md:text-5xl">搜狐汽车智能导购</h1>
-        <p className="mt-3 max-w-4xl text-sm leading-7 text-[#4c647e] md:text-base">
+      <section className="relative mx-auto w-full max-w-6xl rounded-3xl border border-[#d6e7fb] bg-white/90 p-5 shadow-[0_24px_80px_rgba(10,70,140,.12)] md:p-8 reveal-up" style={{ '--delay': '40ms' } as CSSProperties}>
+        <p className="text-xs font-semibold tracking-[0.24em] text-[#2b6cb6] reveal-up" style={{ '--delay': '120ms' } as CSSProperties}>SOHU AUTO ADVISOR DEMO</p>
+        <h1 className="mt-3 text-3xl font-extrabold leading-tight text-[#12263a] md:text-5xl reveal-up" style={{ '--delay': '210ms' } as CSSProperties}>搜狐汽车智能导购</h1>
+        <p className="mt-3 max-w-4xl text-sm leading-7 text-[#4c647e] md:text-base reveal-up" style={{ '--delay': '300ms' } as CSSProperties}>
           支持自然语言输入和高级筛选，覆盖轿车、SUV、MPV、跑车、皮卡与轻客/商用车，实时抓取搜狐汽车并结合品牌官网信息进行推荐。
         </p>
 
-        <div className="mt-6 grid gap-4 rounded-2xl border border-[#dce9f8] bg-gradient-to-br from-[#fbfdff] via-[#f6faff] to-[#eef5ff] p-4 md:grid-cols-[1.15fr_0.85fr] md:p-5">
+        <div className="mt-6 grid gap-4 rounded-2xl border border-[#dce9f8] bg-gradient-to-br from-[#fbfdff] via-[#f6faff] to-[#eef5ff] p-4 md:grid-cols-[1.15fr_0.85fr] md:p-5 reveal-up" style={{ '--delay': '380ms' } as CSSProperties}>
           <div>
             <p className="text-sm font-semibold text-[#123053]">自然语言需求</p>
             <textarea
@@ -286,19 +286,19 @@ export default function DemoPage() {
           </div>
         </div>
 
-        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between reveal-up" style={{ '--delay': '470ms' } as CSSProperties}>
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => void submit()}
               disabled={loading}
-              className="rounded-xl bg-gradient-to-r from-[#1d78ea] to-[#0e5fd1] px-5 py-3 text-sm font-bold text-white shadow-[0_10px_26px_rgba(14,95,209,.28)] disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-xl bg-gradient-to-r from-[#1d78ea] to-[#0e5fd1] px-5 py-3 text-sm font-bold text-white shadow-[0_10px_26px_rgba(14,95,209,.28)] disabled:cursor-not-allowed disabled:opacity-60 micro-btn primary-glow"
             >
               {loading ? '正在抓取并推荐...' : '生成 3 条推荐 + 对比表'}
             </button>
             <button
               onClick={listening ? stopListening : startListening}
               disabled={loading || voiceSessionActive}
-              className={`rounded-xl px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60 ${
+              className={`rounded-xl px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60 micro-btn ${
                 listening ? 'bg-[#0ea77f] hover:bg-[#0b9671]' : 'bg-[#2c8cf2] hover:bg-[#1f7ddd]'
               }`}
             >
@@ -307,7 +307,7 @@ export default function DemoPage() {
             <button
               onClick={voiceSessionActive ? stopVoiceSession : startVoiceSession}
               disabled={loading && !voiceSessionActive}
-              className={`rounded-xl px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60 ${
+              className={`rounded-xl px-5 py-3 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-60 micro-btn ${
                 voiceSessionActive ? 'bg-[#f05a77] hover:bg-[#e94a69]' : 'bg-[#5a73f7] hover:bg-[#4c65eb]'
               }`}
             >
@@ -327,7 +327,7 @@ export default function DemoPage() {
         ) : null}
 
         {voiceTurns.length ? (
-          <div className="mt-4 rounded-xl border border-[#d7e1ff] bg-[#f8f7ff] p-3">
+          <div className="mt-4 rounded-xl border border-[#d7e1ff] bg-[#f8f7ff] p-3 reveal-up" style={{ '--delay': '560ms' } as CSSProperties}>
             <p className="text-xs font-semibold tracking-wide text-[#5a6bcf]">语音导购对话</p>
             <div className="mt-2 max-h-44 space-y-2 overflow-y-auto pr-1">
               {voiceTurns.map((turn, index) => (
@@ -349,14 +349,14 @@ export default function DemoPage() {
 
       {result ? (
         <section className="mx-auto mt-5 grid w-full max-w-6xl gap-4 md:grid-cols-[1.1fr_0.9fr]">
-          <article className="rounded-2xl border border-[#d9e8fb] bg-white/92 p-5 shadow-[0_14px_34px_rgba(17,67,120,.08)]">
+          <article className="rounded-2xl border border-[#d9e8fb] bg-white/92 p-5 shadow-[0_14px_34px_rgba(17,67,120,.08)] reveal-up float-card" style={{ '--delay': '90ms', '--float-delay': '220ms' } as CSSProperties}>
             <h2 className="text-xl font-bold text-[#163452]">推荐结果（默认 Top 3）</h2>
             <p className="mt-1 text-xs text-[#5f7891]">{result.parsed.message}</p>
 
             <div className="mt-4 space-y-3">
               {result.recommendations.length ? (
                 result.recommendations.map((item) => (
-                  <div key={item.car.id} className="rounded-xl border border-[#dbe8f8] bg-gradient-to-br from-[#ffffff] to-[#f4f9ff] p-4">
+                  <div key={item.car.id} className="rounded-xl border border-[#dbe8f8] bg-gradient-to-br from-[#ffffff] to-[#f4f9ff] p-4 reveal-up float-card" style={{ '--delay': '180ms', '--float-delay': '360ms' } as CSSProperties}>
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <h3 className="text-lg font-bold text-[#15457a]">{item.car.brand} {item.car.model}</h3>
@@ -366,7 +366,7 @@ export default function DemoPage() {
                         href={item.car.sourceUrl}
                         target="_blank"
                         rel="noreferrer"
-                        className="rounded-lg border border-[#9bc4f4] bg-white px-3 py-1 text-xs text-[#2068b7] transition hover:bg-[#edf5ff]"
+                        className="rounded-lg border border-[#9bc4f4] bg-white px-3 py-1 text-xs text-[#2068b7] transition hover:bg-[#edf5ff] micro-btn"
                       >
                         打开搜狐来源
                       </a>
@@ -395,7 +395,7 @@ export default function DemoPage() {
             </div>
           </article>
 
-          <article className="rounded-2xl border border-[#d9e8fb] bg-white/92 p-5 shadow-[0_14px_34px_rgba(17,67,120,.08)]">
+          <article className="rounded-2xl border border-[#d9e8fb] bg-white/92 p-5 shadow-[0_14px_34px_rgba(17,67,120,.08)] reveal-up float-card" style={{ '--delay': '180ms', '--float-delay': '680ms' } as CSSProperties}>
             <h2 className="text-xl font-bold text-[#163452]">关键参数对比</h2>
             <div className="mt-3 overflow-x-auto">
               <table className="w-full min-w-[720px] border-collapse text-left text-xs text-[#24415e]">
@@ -433,7 +433,7 @@ export default function DemoPage() {
         </section>
       ) : null}
 
-      <footer className="mx-auto mt-6 w-full max-w-6xl rounded-xl border border-[#d7e8fc] bg-white/85 px-4 py-3 text-xs leading-6 text-[#5f7891] shadow-[0_10px_30px_rgba(18,81,152,.08)]">
+      <footer className="mx-auto mt-6 w-full max-w-6xl rounded-xl border border-[#d7e8fc] bg-white/85 px-4 py-3 text-xs leading-6 text-[#5f7891] shadow-[0_10px_30px_rgba(18,81,152,.08)] reveal-up" style={{ '--delay': '220ms' } as CSSProperties}>
         数据来源于搜狐汽车，价格与配置以官方最新信息为准。若搜狐与品牌官网参数冲突，系统优先展示官网信息。
       </footer>
     </main>
