@@ -441,8 +441,15 @@ function extractCarsFromHtml(html) {
 
   $('a').each((_idx, node) => {
     const text = $(node).text().replace(/\s+/g, ' ').trim()
-    const href = String($(node).attr('href') || '').trim()
+    let href = String($(node).attr('href') || '').trim()
     if (!text || !href) return
+
+    // Allow Sohu model pages natively (e.g., /model_1043)
+    if (href.startsWith('/model_')) {
+      href = `https://db.auto.sohu.com${href}`
+      rows.push({ text, href })
+      return
+    }
 
     const looksLikeModel = /[A-Za-z\u4e00-\u9fa5]+\s?[A-Za-z0-9\-]+/.test(text)
     const includesAuto = /auto\.sohu\.com|db\.auto\.sohu\.com/.test(href)
