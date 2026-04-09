@@ -85,7 +85,8 @@ function toBrandList(raw) {
 }
 
 async function parseDemand(query, filters) {
-  const fallbackDemand = mergeDemand(parseDemandByRules(query), filters)
+  const ruleDemand = parseDemandByRules(query)
+  const fallbackDemand = mergeDemand(ruleDemand, filters)
 
   if (!query) {
     return {
@@ -157,10 +158,15 @@ async function parseDemand(query, filters) {
       }
     }
 
+    const aiDemand = sanitizeFilters(parsed)
+    // Merge order: rule < AI < explicit form filters.
+    // This keeps rule-extracted constraints (e.g., budget) when AI misses fields.
+    const mergedDemand = mergeDemand(mergeDemand(ruleDemand, aiDemand), filters)
+
     return {
       mode: 'ai',
-      demand: mergeDemand(sanitizeFilters(parsed), filters),
-      message: '已使用自然语言解析并与筛选条件合并。',
+      demand: mergedDemand,
+      message: '已使用自然语言解析，并对缺失字段使用规则兜底后与筛选条件合并。',
     }
   } catch {
     return {
@@ -210,19 +216,22 @@ function parseDemandByRules(query) {
   if (/燃油/.test(text)) demand.powerPreference = '燃油'
   if (/柴油/.test(text)) demand.powerPreference = '柴油'
 
-  if (/7座/.test(text)) demand.seats = 7
-  if (/5座/.test(text)) demand.seats = 5
+  if (/7座|七座|七人座/.test(text)) demand.seats = 7
+  if (/5座|五座|五人座/.test(text)) demand.seats = 5
 
   return demand
 }
 
 function mergeDemand(base, override) {
-  return {
-    ...base,
-    ...override,
-    brandInclude: override.brandInclude || base.brandInclude,
-    brandExclude: override.brandExclude || base.brandExclude,
+  const merged = { ...(base || {}) }
+
+  for (const [key, value] of Object.entries(override || {})) {
+    if (value !== undefined) {
+      merged[key] = value
+    }
   }
+
+  return merged
 }
 
 async function getMarketModels() {
