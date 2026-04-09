@@ -24,12 +24,35 @@ const LOCAL_FALLBACK: AdvisorResponse = {
 
 export async function fetchAdvisorResult(payload: AdvisorPayload): Promise<AdvisorResponse> {
   const timeout = 30000
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeout)
   const configuredApiBase = String(import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '')
   // In production, always use same-origin API route to avoid cross-origin misconfiguration.
   const apiBase = import.meta.env.DEV ? configuredApiBase : ''
   const endpoint = apiBase ? `${apiBase}/api/experience-guide` : '/api/experience-guide'
+
+  try {
+    return await requestAdvisor(endpoint, payload, timeout)
+  } catch (error) {
+    console.error('Advisor API first attempt failed, retrying once:', error)
+    try {
+      return await requestAdvisor(endpoint, payload, timeout)
+    } catch (retryError) {
+      console.error('Advisor API retry failed:', retryError)
+      const reason = retryError instanceof Error ? retryError.message : 'unknown_error'
+      return {
+        ...LOCAL_FALLBACK,
+        parsed: {
+          ...LOCAL_FALLBACK.parsed,
+          message: `后端接口暂不可用（${reason}），已回退为前端最小演示结果。`,
+        },
+        fetchedAt: new Date().toISOString(),
+      }
+    }
+  }
+}
+
+async function requestAdvisor(endpoint: string, payload: AdvisorPayload, timeout: number): Promise<AdvisorResponse> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeout)
 
   try {
     const response = await fetch(endpoint, {
@@ -37,8 +60,8 @@ export async function fetchAdvisorResult(payload: AdvisorPayload): Promise<Advis
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       signal: controller.signal,
+      cache: 'no-store',
     })
-    clearTimeout(timer)
 
     if (!response.ok) {
       throw new Error(`API status ${response.status}`)
@@ -48,13 +71,9 @@ export async function fetchAdvisorResult(payload: AdvisorPayload): Promise<Advis
     if (!Array.isArray(data.recommendations)) {
       throw new Error('Invalid advisor response')
     }
+
     return data
-  } catch (error) {
-    console.error('Advisor API request failed:', error)
+  } finally {
     clearTimeout(timer)
-    return {
-      ...LOCAL_FALLBACK,
-      fetchedAt: new Date().toISOString(),
-    }
   }
 }
