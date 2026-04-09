@@ -142,14 +142,14 @@ export default function DemoPage() {
 
       {result ? (
         <section className="mx-auto mt-5 grid w-full max-w-6xl gap-4 md:grid-cols-[1.1fr_0.9fr]">
-          <article className="rounded-2xl border border-[#d9e8fb] bg-white/92 p-5 shadow-[0_14px_34px_rgba(17,67,120,.08)] reveal-up float-card" style={{ '--delay': '90ms', '--float-delay': '220ms' } as CSSProperties}>
+          <article className="rounded-2xl border border-[#d9e8fb] bg-white/92 p-5 shadow-[0_14px_34px_rgba(17,67,120,.08)] reveal-up" style={{ '--delay': '90ms' } as CSSProperties}>
             <h2 className="text-xl font-bold text-[#163452]">推荐结果（默认 Top 3）</h2>
             <p className="mt-1 text-xs text-[#5f7891]">{result.parsed.message}</p>
 
             <div className="mt-4 space-y-3">
               {result.recommendations.length ? (
                 result.recommendations.map((item) => (
-                  <div key={item.car.id} className="rounded-xl border border-[#dbe8f8] bg-gradient-to-br from-[#ffffff] to-[#f4f9ff] p-4 reveal-up float-card" style={{ '--delay': '180ms', '--float-delay': '360ms' } as CSSProperties}>
+                  <div key={item.car.id} className="rounded-xl border border-[#dbe8f8] bg-gradient-to-br from-[#ffffff] to-[#f4f9ff] p-4 reveal-up" style={{ '--delay': '180ms' } as CSSProperties}>
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <h3 className="text-lg font-bold text-[#15457a]">{item.car.brand} {item.car.model}</h3>
@@ -188,7 +188,7 @@ export default function DemoPage() {
             </div>
           </article>
 
-          <article className="rounded-2xl border border-[#d9e8fb] bg-white/92 p-5 shadow-[0_14px_34px_rgba(17,67,120,.08)] reveal-up float-card" style={{ '--delay': '180ms', '--float-delay': '680ms' } as CSSProperties}>
+          <article className="rounded-2xl border border-[#d9e8fb] bg-white/92 p-5 shadow-[0_14px_34px_rgba(17,67,120,.08)] reveal-up" style={{ '--delay': '180ms' } as CSSProperties}>
             <h2 className="text-xl font-bold text-[#163452]">关键参数对比</h2>
             <div className="mt-3 overflow-x-auto">
               <table className="w-full min-w-[720px] border-collapse text-left text-xs text-[#24415e]">
