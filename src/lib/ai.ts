@@ -26,7 +26,9 @@ export async function fetchAdvisorResult(payload: AdvisorPayload): Promise<Advis
   const timeout = 30000
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeout)
-  const apiBase = String(import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '')
+  const configuredApiBase = String(import.meta.env.VITE_API_BASE_URL || '').trim().replace(/\/+$/, '')
+  // In production, always use same-origin API route to avoid cross-origin misconfiguration.
+  const apiBase = import.meta.env.DEV ? configuredApiBase : ''
   const endpoint = apiBase ? `${apiBase}/api/experience-guide` : '/api/experience-guide'
 
   try {
@@ -47,7 +49,8 @@ export async function fetchAdvisorResult(payload: AdvisorPayload): Promise<Advis
       throw new Error('Invalid advisor response')
     }
     return data
-  } catch {
+  } catch (error) {
+    console.error('Advisor API request failed:', error)
     clearTimeout(timer)
     return {
       ...LOCAL_FALLBACK,
