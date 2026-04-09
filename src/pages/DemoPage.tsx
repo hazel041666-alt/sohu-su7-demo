@@ -1,5 +1,5 @@
 import { useMemo, useState, type CSSProperties } from 'react'
-import { fetchAdvisorResult } from '../lib/ai'
+import { fetchAdvisorResult, getInstantFallbackResult } from '../lib/ai'
 import { markGuideConversation, markInteraction, registerPageVisit } from '../lib/analytics'
 import type { AdvisorResponse, DrivingScene, PowerType, UserDemand } from '../lib/types'
 
@@ -25,6 +25,7 @@ export default function DemoPage() {
     if (loading) return
 
     setLoading(true)
+    setResult(getInstantFallbackResult('正在请求实时推荐，先展示本地参考结果...'))
     safeTrack(() => markInteraction(visitorId))
 
     try {
