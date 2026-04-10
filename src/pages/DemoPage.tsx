@@ -224,6 +224,60 @@ export default function DemoPage() {
         </section>
       ) : null}
 
+      {result?.decisionReport ? (
+        <section className="mx-auto mt-4 w-full max-w-6xl rounded-2xl border border-[#d9e8fb] bg-white/92 p-5 shadow-[0_14px_34px_rgba(17,67,120,.08)] reveal-up" style={{ '--delay': '210ms' } as CSSProperties}>
+          <h2 className="text-xl font-bold text-[#163452]">决策报告</h2>
+          <p className="mt-2 text-sm text-[#1f3d59]">{result.decisionReport.summary}</p>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <div className="rounded-xl border border-[#dce8f7] bg-[#f8fbff] p-3">
+              <p className="text-sm font-semibold text-[#15457a]">匹配亮点</p>
+              <ul className="mt-2 space-y-1 text-xs text-[#38556f]">
+                {result.decisionReport.fitHighlights.map((line) => (
+                  <li key={line}>• {line}</li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="rounded-xl border border-[#dce8f7] bg-[#f8fbff] p-3">
+              <p className="text-sm font-semibold text-[#15457a]">取舍提醒</p>
+              <ul className="mt-2 space-y-1 text-xs text-[#38556f]">
+                {(result.decisionReport.tradeoffs.length ? result.decisionReport.tradeoffs : ['当前 Top3 价格带接近，取舍成本差异较小。']).map((line) => (
+                  <li key={line}>• {line}</li>
+                ))}
+              </ul>
+            </div>
+          </div>
+
+          <div className="mt-4 overflow-x-auto rounded-xl border border-[#dce8f7]">
+            <table className="w-full min-w-[680px] border-collapse text-left text-xs text-[#24415e]">
+              <thead>
+                <tr className="border-b border-[#d5e4f5] bg-[#f7fbff] text-[#4f6c88]">
+                  <th className="px-2 py-2">车型</th>
+                  <th className="px-2 py-2">3年总成本(万)</th>
+                  <th className="px-2 py-2">折旧</th>
+                  <th className="px-2 py-2">能耗</th>
+                  <th className="px-2 py-2">保险</th>
+                  <th className="px-2 py-2">保养</th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.decisionReport.costBreakdown.map((row) => (
+                  <tr key={row.carId} className="border-b border-[#e4eef9]">
+                    <td className="px-2 py-2 font-semibold text-[#173a5e]">{row.modelName}</td>
+                    <td className="px-2 py-2">{row.totalWan}</td>
+                    <td className="px-2 py-2">{row.depreciationWan}</td>
+                    <td className="px-2 py-2">{row.fuelEnergyWan}</td>
+                    <td className="px-2 py-2">{row.insuranceWan}</td>
+                    <td className="px-2 py-2">{row.maintenanceWan}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      ) : null}
+
       <footer className="mx-auto mt-6 w-full max-w-6xl rounded-xl border border-[#d7e8fc] bg-white/85 px-4 py-3 text-xs leading-6 text-[#5f7891] shadow-[0_10px_30px_rgba(18,81,152,.08)] reveal-up" style={{ '--delay': '220ms' } as CSSProperties}>
         数据来源：搜狐汽车站点（auto.sohu.com 与 db.auto.sohu.com）。若实时抓取失败，页面会直接报错，不再展示本地假数据。
       </footer>

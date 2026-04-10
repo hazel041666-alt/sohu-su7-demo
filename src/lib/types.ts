@@ -74,10 +74,28 @@ export type Recommendation = {
   reason: string
 }
 
+export type CostBreakdown = {
+  carId: string
+  modelName: string
+  totalWan: number
+  depreciationWan: number
+  fuelEnergyWan: number
+  insuranceWan: number
+  maintenanceWan: number
+}
+
+export type DecisionReport = {
+  summary: string
+  fitHighlights: string[]
+  tradeoffs: string[]
+  costBreakdown: CostBreakdown[]
+}
+
 export type AdvisorResponse = {
   parsed: ParsedDemand
   recommendations: Recommendation[]
   comparison: CarModel[]
+  decisionReport?: DecisionReport
   sourceDisclaimer: string
   fetchedAt: string
   sourceStats: {

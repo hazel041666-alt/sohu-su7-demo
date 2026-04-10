@@ -35,11 +35,13 @@ export default async function handler(req, res) {
     const ranked = await rankBySohuOfficialScore(candidates)
     const recommendations = ranked.slice(0, 3)
     const comparison = recommendations.map((item) => item.car)
+    const decisionReport = buildDecisionReport(recommendations, parsed.demand)
 
     res.status(200).json({
       parsed,
       recommendations,
       comparison,
+      decisionReport,
       sourceDisclaimer: '推荐数据来自搜狐汽车车库实时页面，点击来源可跳转到搜狐对应车型页。',
       fetchedAt: new Date().toISOString(),
       sourceStats: {
@@ -737,4 +739,94 @@ function buildReason(car, demand) {
 
   parts.push('来源为搜狐车库实时车型页')
   return parts.join('；')
+}
+
+function buildDecisionReport(recommendations, demand) {
+  if (!Array.isArray(recommendations) || !recommendations.length) {
+    return {
+      summary: '当前条件下可用车型不足，建议放宽预算或动力限制。',
+      fitHighlights: [],
+      tradeoffs: [],
+      costBreakdown: [],
+    }
+  }
+
+  const top = recommendations[0]
+  const highlights = recommendations.slice(0, 3).map((item, index) => {
+    const car = item.car
+    const scoreText = Number.isFinite(item.score) ? Number(item.score).toFixed(2) : '暂无'
+    return `Top ${index + 1}: ${car.brand}${car.model}，搜狐评分 ${scoreText}，价格 ${car.priceMinWan}-${car.priceMaxWan}万，动力 ${car.powerType}`
+  })
+
+  const tradeoffs = []
+  if (recommendations.length >= 2) {
+    const a = recommendations[0].car
+    const b = recommendations[1].car
+    const aMid = (a.priceMinWan + a.priceMaxWan) / 2
+    const bMid = (b.priceMinWan + b.priceMaxWan) / 2
+    const gap = Math.abs(aMid - bMid)
+    if (gap > 2) {
+      const higher = aMid > bMid ? a : b
+      const lower = aMid > bMid ? b : a
+      tradeoffs.push(`${higher.brand}${higher.model} 价格中位数更高，较 ${lower.brand}${lower.model} 约贵 ${gap.toFixed(1)} 万。`)
+    }
+  }
+
+  const costBreakdown = recommendations.map((item) => estimateThreeYearCost(item.car, demand))
+  const cheapest = [...costBreakdown].sort((x, y) => x.totalWan - y.totalWan)[0]
+  const summary = `最匹配车型为 ${top.car.brand}${top.car.model}。若更重视3年总成本，可优先考虑 ${cheapest.modelName}（约 ${cheapest.totalWan.toFixed(1)} 万）。`
+
+  return {
+    summary,
+    fitHighlights: highlights,
+    tradeoffs,
+    costBreakdown,
+  }
+}
+
+function estimateThreeYearCost(car, demand) {
+  const midPrice = (car.priceMinWan + car.priceMaxWan) / 2
+  const annualKm = demand?.scene === '通勤' ? 15000 : demand?.scene === '家用' ? 18000 : demand?.scene === '长途' ? 22000 : 16000
+
+  const energyCostPerKm =
+    car.powerType === '纯电'
+      ? 0.16
+      : car.powerType === '插混'
+        ? 0.42
+        : car.powerType === '增程'
+          ? 0.48
+          : car.powerType === '柴油'
+            ? 0.55
+            : 0.68
+
+  const depreciationRate =
+    car.powerType === '纯电'
+      ? 0.42
+      : car.powerType === '插混'
+        ? 0.38
+        : car.powerType === '增程'
+          ? 0.36
+          : car.powerType === '柴油'
+            ? 0.35
+            : 0.33
+
+  const depreciationWan = midPrice * depreciationRate
+  const fuelEnergyWan = (annualKm * 3 * energyCostPerKm) / 10000
+  const insuranceWan = midPrice * 0.022 * 3
+  const maintenanceWan = car.powerType === '纯电' ? 0.45 : car.powerType === '插混' || car.powerType === '增程' ? 0.65 : 0.8
+  const totalWan = depreciationWan + fuelEnergyWan + insuranceWan + maintenanceWan
+
+  return {
+    carId: car.id,
+    modelName: `${car.brand}${car.model}`,
+    totalWan: round2(totalWan),
+    depreciationWan: round2(depreciationWan),
+    fuelEnergyWan: round2(fuelEnergyWan),
+    insuranceWan: round2(insuranceWan),
+    maintenanceWan: round2(maintenanceWan),
+  }
+}
+
+function round2(value) {
+  return Math.round(Number(value) * 100) / 100
 }
