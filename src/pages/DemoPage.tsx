@@ -101,9 +101,12 @@ export default function DemoPage() {
             <SelectInput
               label="座位需求"
               value={String(filters.seats || '')}
-              options={['', '5', '7']}
+              options={['', '5', '6', '7']}
               onChange={(value) =>
-                setFilters((prev) => ({ ...prev, seats: value === '7' ? 7 : value === '5' ? 5 : undefined }))
+                setFilters((prev) => ({
+                  ...prev,
+                  seats: value === '7' ? 7 : value === '6' ? 6 : value === '5' ? 5 : undefined,
+                }))
               }
             />
             <TextInput

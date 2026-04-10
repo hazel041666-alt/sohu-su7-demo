@@ -58,7 +58,7 @@ export type UserDemand = {
   powerPreference?: PowerType
   brandInclude?: string[]
   brandExclude?: string[]
-  seats?: 5 | 7
+  seats?: 5 | 6 | 7
   smartNeed?: string
 }
 

@@ -2,6 +2,9 @@ const DEFAULT_API_URL = 'https://ark.cn-beijing.volces.com/api/v3/chat/completio
 const CACHE_TTL_MS = 10 * 60 * 1000
 const SCRAPE_FETCH_TIMEOUT_MS = 18000
 const BRAND_CRAWL_LIMIT = 18
+const SOHU_SCORE_TIMEOUT_MS = 3000
+const SOHU_SCORE_CANDIDATE_LIMIT = 120
+const SOHU_SCORE_API_BASE = 'https://portal.auto.sohu.com/aggr/model/'
 const SOHU_SOURCE_URLS = [
   'https://db.auto.sohu.com/home/?pcm=202.412_16_0.0.0&scm=thor.412_14-201000.0.0-0-0-0-0.0',
   'https://db.auto.sohu.com/home/',
@@ -10,6 +13,7 @@ const SOHU_SOURCE_URLS = [
 let cachedModels = []
 let cacheExpiresAt = 0
 let lastScrapeError = ''
+const sohuScoreCache = new Map()
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -27,7 +31,9 @@ export default async function handler(req, res) {
       throw new Error('搜狐汽车数据抓取为空，请稍后重试')
     }
 
-    const recommendations = recommendCars(marketModels, parsed.demand).slice(0, 3)
+    const candidates = recommendCars(marketModels, parsed.demand)
+    const ranked = await rankBySohuOfficialScore(candidates)
+    const recommendations = ranked.slice(0, 3)
     const comparison = recommendations.map((item) => item.car)
 
     res.status(200).json({
@@ -67,7 +73,7 @@ function sanitizeFilters(filters) {
       : undefined,
     brandInclude: toBrandList(filters.brandInclude),
     brandExclude: toBrandList(filters.brandExclude),
-    seats: filters.seats === 7 ? 7 : filters.seats === 5 ? 5 : undefined,
+    seats: filters.seats === 7 ? 7 : filters.seats === 6 ? 6 : filters.seats === 5 ? 5 : undefined,
     smartNeed: typeof filters.smartNeed === 'string' ? filters.smartNeed.trim().slice(0, 120) : undefined,
   }
 }
@@ -90,6 +96,14 @@ async function parseDemand(query, filters) {
   const fallbackDemand = mergeDemand(ruleDemand, filters)
 
   if (!query) {
+    if (hasDemandConstraint(fallbackDemand)) {
+      return {
+        mode: 'ai',
+        demand: fallbackDemand,
+        message: '未填写自然语言，已根据表单条件进行智能推荐。',
+      }
+    }
+
     return {
       mode: 'form_fallback',
       demand: fallbackDemand,
@@ -218,9 +232,20 @@ function parseDemandByRules(query) {
   if (/柴油/.test(text)) demand.powerPreference = '柴油'
 
   if (/7座|七座|七人座/.test(text)) demand.seats = 7
+  if (/6座|六座|六人座/.test(text)) demand.seats = 6
   if (/5座|五座|五人座/.test(text)) demand.seats = 5
 
   return demand
+}
+
+function hasDemandConstraint(demand) {
+  if (!demand || typeof demand !== 'object') return false
+  return Object.values(demand).some((value) => {
+    if (value === undefined || value === null) return false
+    if (Array.isArray(value)) return value.length > 0
+    if (typeof value === 'string') return value.trim().length > 0
+    return true
+  })
 }
 
 function mergeDemand(base, override) {
@@ -597,6 +622,79 @@ function recommendCars(cars, demand) {
       }
     })
     .sort((a, b) => b.score - a.score)
+}
+
+async function rankBySohuOfficialScore(items) {
+  if (!Array.isArray(items) || !items.length) return []
+
+  const targets = items.slice(0, SOHU_SCORE_CANDIDATE_LIMIT)
+  const enriched = await Promise.all(
+    targets.map(async (item) => {
+      const modelId = extractModelId(item.car)
+      if (!modelId) return { ...item, _sohuScore: NaN }
+
+      const sohuScore = await fetchSohuScore(modelId)
+      if (!Number.isFinite(sohuScore)) return { ...item, _sohuScore: NaN }
+
+      return {
+        ...item,
+        score: Number(sohuScore),
+        _sohuScore: Number(sohuScore),
+        reason: `${item.reason}；搜狐评分 ${Number(sohuScore).toFixed(2)}`,
+      }
+    })
+  )
+
+  const tail = items.slice(SOHU_SCORE_CANDIDATE_LIMIT).map((item) => ({ ...item, _sohuScore: NaN }))
+  return [...enriched, ...tail]
+    .sort((a, b) => {
+      const sa = Number.isFinite(a._sohuScore) ? a._sohuScore : -1
+      const sb = Number.isFinite(b._sohuScore) ? b._sohuScore : -1
+      if (sb !== sa) return sb - sa
+      return b.score - a.score
+    })
+    .map(({ _sohuScore, ...item }) => item)
+}
+
+function extractModelId(car) {
+  const idFromId = String(car?.id || '').match(/(\d+)/)
+  if (idFromId) return Number(idFromId[1])
+
+  const idFromUrl = String(car?.sourceUrl || '').match(/model_(\d+)/)
+  if (idFromUrl) return Number(idFromUrl[1])
+
+  return 0
+}
+
+async function fetchSohuScore(modelId) {
+  if (!Number.isInteger(modelId) || modelId <= 0) return NaN
+  if (sohuScoreCache.has(modelId)) return sohuScoreCache.get(modelId)
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), SOHU_SCORE_TIMEOUT_MS)
+  try {
+    const response = await fetch(`${SOHU_SCORE_API_BASE}${modelId}`, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36',
+      },
+    })
+
+    if (!response.ok) return NaN
+
+    const data = await response.json()
+    const graph = Array.isArray(data?.schema_desc?.['@graph']) ? data.schema_desc['@graph'] : []
+    const carNode = graph.find((node) => node?.['@type'] === 'Car')
+    const ratingValue = Number(carNode?.aggregateRating?.ratingValue)
+    const score = Number.isFinite(ratingValue) ? ratingValue : NaN
+    sohuScoreCache.set(modelId, score)
+    return score
+  } catch {
+    return NaN
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 function calcScore(car, demand) {
